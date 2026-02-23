@@ -1,6 +1,7 @@
 """Command implementation for rdksmiles."""
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -22,6 +23,25 @@ def _find_uv() -> str:
     return uv_path
 
 
+def _validate_name(name: str) -> str:
+    """Validate residue name is safe for ChimeraX command strings."""
+    if not re.match(r"^[A-Za-z0-9_]+$", name):
+        raise UserError(
+            f"Invalid residue name: {name!r} (alphanumeric and underscore only)"
+        )
+    return name
+
+
+def _validate_sdf_path(raw_path: str) -> Path:
+    """Validate subprocess output looks like a valid SDF path."""
+    path = Path(raw_path)
+    if not path.is_absolute() or path.suffix != ".sdf":
+        raise UserError(f"Unexpected output from RDKit script: {raw_path!r}")
+    if not path.exists():
+        raise UserError(f"SDF file not generated: {raw_path}")
+    return path
+
+
 def rdksmiles(session, smiles, output=None, name="UNL", hydrogen=True):
     """Generate 3D structure from SMILES using RDKit ETKDGv3.
 
@@ -37,6 +57,7 @@ def rdksmiles(session, smiles, output=None, name="UNL", hydrogen=True):
     hydrogen : bool
         Show hydrogens (default: True).
     """
+    name = _validate_name(name)
     script_path = _find_script()
     uv_path = _find_uv()
 
@@ -57,21 +78,21 @@ def rdksmiles(session, smiles, output=None, name="UNL", hydrogen=True):
     if result.returncode != 0:
         raise UserError(f"RDKit error: {result.stderr.strip()}")
 
-    sdf_path = result.stdout.strip()
-    if not Path(sdf_path).exists():
-        raise UserError(f"SDF file not generated: {sdf_path}")
+    sdf_path = _validate_sdf_path(result.stdout.strip())
 
-    open_cmd = f'open "{sdf_path}" name "{name}"'
-    run(session, open_cmd)
+    try:
+        open_cmd = f'open "{sdf_path}" name "{name}"'
+        models = run(session, open_cmd)
 
-    if not hydrogen:
-        run(session, "hide H")
-
-    if output is None:
-        try:
-            os.unlink(sdf_path)
-        except OSError:
-            pass
+        if not hydrogen and models:
+            model_spec = f"#{models[0].id_string}"
+            run(session, f"hide {model_spec} & H")
+    finally:
+        if output is None:
+            try:
+                os.unlink(sdf_path)
+            except OSError:
+                pass
 
     session.logger.info(f"Generated 3D structure from SMILES: {smiles}")
 

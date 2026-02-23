@@ -3,23 +3,23 @@ requires = ["ChimeraX-BundleBuilder"]
 build-backend = "chimerax.bundle_builder.cx_pep517"
 
 [project]
-name = "ChimeraX-RDKitSMILES"
-version = "0.1.0"
-description = "Generate 3D molecules from SMILES using RDKit ETKDGv3"
+name = "ChimeraX-RDKitConformer"
+version = "0.2.0"
+description = "Generate 3D conformers from molecular notations using RDKit ETKDGv3"
 license = { text = "MIT" }
 dynamic = ["classifiers", "requires-python"]
 
 [chimerax]
-package = "chimerax.rdkit_smiles"
+package = "chimerax.rdkit_conformer"
 pure = true
 min-session-version = 1
 max-session-version = 1
 categories = ["Structure Generation"]
 classifiers = []
 
-[chimerax.command.rdksmiles]
+[chimerax.command.rdkconf]
 category = "Structure Generation"
-description = "Generate 3D structure from SMILES using RDKit ETKDGv3"
+description = "Generate 3D conformer from molecular notation using RDKit ETKDGv3"
 
 [chimerax.package-data]
 "src/" = ["smiles_to_sdf.py"]

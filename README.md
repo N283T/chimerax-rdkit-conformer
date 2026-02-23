@@ -1,6 +1,6 @@
-# ChimeraX-RDKitSMILES
+# ChimeraX-RDKitConformer
 
-Generate 3D molecules from SMILES strings using RDKit ETKDGv3, directly in ChimeraX.
+Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in ChimeraX.
 
 ## Requirements
 
@@ -22,12 +22,12 @@ ChimeraX --nogui --exit --cmd 'devel install .'
 ## Usage
 
 ```
-rdksmiles CCO                          # Ethanol
-rdksmiles c1ccccc1                     # Benzene
-rdksmiles "CC(=O)Oc1ccccc1C(=O)O"     # Aspirin
-rdksmiles CCO name EtOH               # Custom residue name
-rdksmiles CCO hydrogen false           # Hide hydrogens
-rdksmiles CCO output ~/ethanol.sdf     # Save SDF file
+rdkconf CCO                          # Ethanol
+rdkconf c1ccccc1                     # Benzene
+rdkconf "CC(=O)Oc1ccccc1C(=O)O"     # Aspirin
+rdkconf CCO name EtOH               # Custom residue name
+rdkconf CCO hydrogen false           # Hide hydrogens
+rdkconf CCO output ~/ethanol.sdf     # Save SDF file
 ```
 
 ## How It Works

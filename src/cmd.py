@@ -1,4 +1,4 @@
-"""Command implementation for rdksmiles."""
+"""Command implementation for rdkconf."""
 
 import os
 import re
@@ -42,14 +42,14 @@ def _validate_sdf_path(raw_path: str) -> Path:
     return path
 
 
-def rdksmiles(session, smiles, output=None, name="UNL", hydrogen=True):
-    """Generate 3D structure from SMILES using RDKit ETKDGv3.
+def rdkconf(session, input_str, output=None, name="UNL", hydrogen=True):
+    """Generate 3D conformer from molecular notation using RDKit ETKDGv3.
 
     Parameters
     ----------
     session : chimerax.core.session.Session
-    smiles : str
-        SMILES string.
+    input_str : str
+        Molecular notation string (SMILES by default).
     output : str, optional
         Save SDF to this path.
     name : str
@@ -61,7 +61,7 @@ def rdksmiles(session, smiles, output=None, name="UNL", hydrogen=True):
     script_path = _find_script()
     uv_path = _find_uv()
 
-    cmd_args = [uv_path, "run", "--script", str(script_path), smiles]
+    cmd_args = [uv_path, "run", "--script", str(script_path), input_str]
     if output:
         cmd_args.extend(["-o", output])
 
@@ -94,15 +94,15 @@ def rdksmiles(session, smiles, output=None, name="UNL", hydrogen=True):
             except OSError:
                 pass
 
-    session.logger.info(f"Generated 3D structure from SMILES: {smiles}")
+    session.logger.info(f"Generated 3D conformer from: {input_str}")
 
 
-rdksmiles_desc = CmdDesc(
-    required=[("smiles", StringArg)],
+rdkconf_desc = CmdDesc(
+    required=[("input_str", StringArg)],
     keyword=[
         ("output", SaveFileNameArg),
         ("name", StringArg),
         ("hydrogen", BoolArg),
     ],
-    synopsis="Generate 3D structure from SMILES using RDKit ETKDGv3",
+    synopsis="Generate 3D conformer from molecular notation using RDKit ETKDGv3",
 )

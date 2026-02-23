@@ -43,6 +43,7 @@ def smiles_to_3d(smiles: str, output: Path | None = None) -> Path:
     if output is None:
         tmp = tempfile.NamedTemporaryFile(suffix=".sdf", delete=False)
         output = Path(tmp.name)
+        tmp.close()
 
     with Chem.SDWriter(str(output)) as writer:
         writer.write(mol)

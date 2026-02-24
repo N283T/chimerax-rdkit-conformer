@@ -1,6 +1,6 @@
-# ChimeraX-RDKitSMILES
+# ChimeraX-RDKitConformer
 
-Generate 3D molecules from SMILES strings using RDKit ETKDGv3, directly in ChimeraX.
+Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in ChimeraX.
 
 ## Requirements
 
@@ -22,13 +22,31 @@ ChimeraX --nogui --exit --cmd 'devel install .'
 ## Usage
 
 ```
-rdksmiles CCO                          # Ethanol
-rdksmiles c1ccccc1                     # Benzene
-rdksmiles "CC(=O)Oc1ccccc1C(=O)O"     # Aspirin
-rdksmiles CCO name EtOH               # Custom residue name
-rdksmiles CCO hydrogen false           # Hide hydrogens
-rdksmiles CCO output ~/ethanol.sdf     # Save SDF file
+rdkconf CCO                                        # SMILES (default)
+rdkconf c1ccccc1                                   # Benzene
+rdkconf "CC(=O)Oc1ccccc1C(=O)O"                   # Aspirin
+rdkconf "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3"      # InChI (auto-detected)
+rdkconf GGG format sequence                        # Peptide sequence
+rdkconf ACGT format dna                            # DNA sequence
+rdkconf ACGU format rna                            # RNA sequence
+rdkconf ">seq\nGGG" format fasta                   # FASTA format
+rdkconf "PEPTIDE1{G.G.G}$$$$" format helm          # HELM notation
+rdkconf CCO name EtOH                              # Custom residue name
+rdkconf CCO hydrogen false                         # Hide hydrogens
+rdkconf CCO output ~/ethanol.sdf                   # Save SDF file
 ```
+
+### Supported Formats
+
+| Format | `format` keyword | Auto-detected |
+|--------|-----------------|---------------|
+| SMILES | `smiles` (default) | Yes (fallback) |
+| InChI | `inchi` | Yes (`InChI=` prefix) |
+| Protein sequence | `sequence` | No |
+| DNA sequence | `dna` | No |
+| RNA sequence | `rna` | No |
+| FASTA | `fasta` | No |
+| HELM | `helm` | No |
 
 ## How It Works
 

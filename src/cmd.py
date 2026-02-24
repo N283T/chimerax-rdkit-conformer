@@ -1,18 +1,21 @@
 """Command implementation for rdkconf."""
 
-import os
+import json
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
-from chimerax.core.commands import CmdDesc, StringArg, BoolArg, SaveFileNameArg, run
+from chimerax.atomic import AtomicStructure, Bond
+from chimerax.atomic.struct_edit import add_atom, add_bond
+from chimerax.core.commands import CmdDesc, StringArg, BoolArg, run
 from chimerax.core.errors import UserError
+from numpy import array, float64
 
 
 def _find_script() -> Path:
-    """Locate the bundled input_to_sdf.py script."""
-    return Path(__file__).parent.joinpath("input_to_sdf.py")
+    """Locate the bundled input_to_json.py script."""
+    return Path(__file__).parent.joinpath("input_to_json.py")
 
 
 def _find_uv() -> str:
@@ -30,16 +33,6 @@ def _validate_name(name: str) -> str:
             f"Invalid residue name: {name!r} (alphanumeric and underscore only)"
         )
     return name
-
-
-def _validate_sdf_path(raw_path: str) -> Path:
-    """Validate subprocess output looks like a valid SDF path."""
-    path = Path(raw_path)
-    if not path.is_absolute() or path.suffix != ".sdf":
-        raise UserError(f"Unexpected output from RDKit script: {raw_path!r}")
-    if not path.exists():
-        raise UserError(f"SDF file not generated: {raw_path}")
-    return path
 
 
 _VALID_FORMATS = {"smiles", "inchi", "fasta", "sequence", "helm", "dna", "rna"}
@@ -63,7 +56,48 @@ def _detect_format(input_str: str, user_format: str | None) -> str:
     return "smiles"
 
 
-def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=True):
+def _build_model(session, mol_data, name="UNL"):
+    """Build an AtomicStructure from parsed JSON molecule data.
+
+    Parameters
+    ----------
+    session : chimerax.core.session.Session
+    mol_data : dict
+        JSON-parsed dict with 'atoms' and 'bonds' keys.
+    name : str
+        Model and residue name.
+
+    Returns
+    -------
+    AtomicStructure
+    """
+    if not mol_data.get("atoms"):
+        raise UserError("RDKit output contains no atoms")
+
+    Bond.register_attr(session, "order", "rdkit_conformer", attr_type=float)
+
+    s = AtomicStructure(session, name=name)
+    r = s.new_residue(name, " ", 1)
+
+    element_count = {}
+    atoms = []
+    for atom_info in mol_data["atoms"]:
+        elem = atom_info["element"]
+        n = element_count.get(elem, 0) + 1
+        element_count[elem] = n
+        atom_name = f"{elem}{n}"
+        xyz = array([atom_info["x"], atom_info["y"], atom_info["z"]], dtype=float64)
+        a = add_atom(atom_name, elem, r, xyz)
+        atoms.append(a)
+
+    for bond_info in mol_data["bonds"]:
+        b = add_bond(atoms[bond_info["begin"]], atoms[bond_info["end"]])
+        b.order = bond_info.get("order", 1.0)
+
+    return s
+
+
+def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True):
     """Generate 3D conformer from molecular notation using RDKit ETKDGv3.
 
     Parameters
@@ -73,8 +107,6 @@ def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=T
         Molecular notation string (SMILES by default).
     format : str, optional
         Input format. Auto-detects InChI. Default: smiles.
-    output : str, optional
-        Save SDF to this path.
     name : str
         Residue name (default: UNL).
     hydrogen : bool
@@ -94,8 +126,6 @@ def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=T
         "--format",
         fmt,
     ]
-    if output:
-        cmd_args.extend(["-o", output])
 
     try:
         result = subprocess.run(
@@ -110,21 +140,17 @@ def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=T
     if result.returncode != 0:
         raise UserError(f"RDKit error: {result.stderr.strip()}")
 
-    sdf_path = _validate_sdf_path(result.stdout.strip())
-
     try:
-        open_cmd = f'open "{sdf_path}" name "{name}"'
-        models = run(session, open_cmd)
+        mol_data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        raise UserError(f"Failed to parse RDKit output: {e}")
 
-        if not hydrogen and models:
-            model_spec = f"#{models[0].id_string}"
-            run(session, f"hide {model_spec} & H")
-    finally:
-        if output is None:
-            try:
-                os.unlink(sdf_path)
-            except OSError:
-                pass
+    model = _build_model(session, mol_data, name)
+    session.models.add([model])
+
+    if not hydrogen:
+        model_spec = f"#{model.id_string}"
+        run(session, f"hide {model_spec} & H")
 
     session.logger.info(f"Generated 3D conformer ({fmt}) from: {input_str}")
 
@@ -133,7 +159,6 @@ rdkconf_desc = CmdDesc(
     required=[("input_str", StringArg)],
     keyword=[
         ("format", StringArg),
-        ("output", SaveFileNameArg),
         ("name", StringArg),
         ("hydrogen", BoolArg),
     ],

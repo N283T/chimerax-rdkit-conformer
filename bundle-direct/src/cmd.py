@@ -1,0 +1,295 @@
+"""ChimeraX command implementation for rdkconf.
+
+Generates 3D conformers from molecular notations by calling RDKit
+directly and building AtomicStructure models from the result.
+"""
+
+import re
+import warnings
+
+from chimerax.atomic import AtomicStructure, Bond
+from chimerax.atomic.struct_edit import add_atom, add_bond
+from chimerax.core.commands import CmdDesc, StringArg, BoolArg, IntArg, run
+from chimerax.core.errors import UserError
+from numpy import array, float64
+
+from .rdkit_ops import (
+    VALID_FORMATS as _VALID_FORMATS,
+    _MAX_CONFORMERS,
+    input_to_json as _rdkit_generate,
+)
+
+
+def _validate_name(name: str) -> str:
+    """Validate residue name is safe for ChimeraX command strings."""
+    if not re.match(r"^[A-Za-z0-9_]+$", name):
+        raise UserError(
+            f"Invalid residue name: {name!r} (alphanumeric and underscore only)"
+        )
+    return name
+
+
+def _detect_format(input_str: str, user_format: str | None) -> str:
+    """Detect or validate input format.
+
+    When user_format is provided, validates it against _VALID_FORMATS.
+    Otherwise, auto-detects InChI (starts with 'InChI=') and defaults to SMILES.
+
+    Raises
+    ------
+    UserError
+        If user_format is not a recognized format.
+    """
+    if user_format is not None:
+        fmt = user_format.lower()
+        if fmt not in _VALID_FORMATS:
+            raise UserError(
+                f"Invalid format: {user_format!r}. "
+                f"Valid formats: {', '.join(sorted(_VALID_FORMATS))}"
+            )
+        return fmt
+    if input_str.startswith("InChI="):
+        return "inchi"
+    return "smiles"
+
+
+def _build_model(session, mol_data, name="UNL"):
+    """Build an AtomicStructure from molecule data.
+
+    Parameters
+    ----------
+    session : chimerax.core.session.Session
+    mol_data : dict
+        Dict with 'atoms' and 'bonds' keys (as returned by rdkit_ops.mol_to_json).
+    name : str
+        Model and residue name. The residue is placed in chain ' '
+        with sequence number 1.
+
+    Returns
+    -------
+    AtomicStructure
+
+    Raises
+    ------
+    UserError
+        If mol_data contains no atoms, is missing 'bonds' data,
+        or contains malformed atom/bond entries.
+
+    Notes
+    -----
+    Registers a custom 'order' attribute on Bond if not already registered.
+    """
+    if not mol_data.get("atoms"):
+        raise UserError("RDKit output contains no atoms")
+    if "bonds" not in mol_data:
+        raise UserError("RDKit output is missing bonds data")
+
+    try:
+        Bond.register_attr(session, "order", "rdkit_conformer", attr_type=float)
+    except ValueError as e:
+        if "already" in str(e).lower():
+            pass  # Expected on second+ invocation within the same session
+        else:
+            raise UserError(f"Failed to register bond order attribute: {e}") from e
+
+    s = AtomicStructure(session, name=name)
+    try:
+        r = s.new_residue(name, " ", 1)
+
+        element_count = {}
+        atoms = []
+        for i, atom_info in enumerate(mol_data["atoms"]):
+            try:
+                elem = atom_info["element"]
+                xyz = array(
+                    [atom_info["x"], atom_info["y"], atom_info["z"]], dtype=float64
+                )
+            except (KeyError, TypeError) as e:
+                raise UserError(f"Malformed atom data at index {i}: {e}") from e
+            n = element_count.get(elem, 0) + 1
+            element_count[elem] = n
+            atom_name = f"{elem}{n}"
+            a = add_atom(atom_name, elem, r, xyz)
+            atoms.append(a)
+
+        num_atoms = len(atoms)
+        for i, bond_info in enumerate(mol_data["bonds"]):
+            try:
+                begin_idx = bond_info["begin"]
+                end_idx = bond_info["end"]
+            except KeyError as e:
+                raise UserError(f"Malformed bond data at index {i}: {e}") from e
+            if (
+                begin_idx < 0
+                or begin_idx >= num_atoms
+                or end_idx < 0
+                or end_idx >= num_atoms
+            ):
+                raise UserError(
+                    f"Invalid bond indices ({begin_idx}, {end_idx}) "
+                    f"for {num_atoms} atoms"
+                )
+            b = add_bond(atoms[begin_idx], atoms[end_idx])
+            b.order = bond_info.get("order", 1.0)
+    except Exception:
+        try:
+            s.delete()
+        except Exception as cleanup_err:
+            session.logger.warning(f"cleanup: failed to delete model: {cleanup_err}")
+        raise
+
+    return s
+
+
+def rdkconf(
+    session,
+    input_str,
+    format=None,
+    name="UNL",
+    hydrogen=True,
+    conformers=1,
+    optimize=False,
+    minimize=False,
+):
+    """Generate 3D conformer(s) from molecular notation using RDKit ETKDGv3.
+
+    Parameters
+    ----------
+    session : chimerax.core.session.Session
+    input_str : str
+        Molecular notation string (SMILES by default).
+    format : str, optional
+        Input format. Auto-detects InChI. Default: smiles.
+    name : str
+        Model and residue name (default: UNL).
+    hydrogen : bool
+        Show hydrogens (default: True).
+    conformers : int
+        Number of conformers to generate (default: 1, max: 50).
+    optimize : bool
+        Run RDKit MMFF94 force-field optimization before returning
+        coordinates (default: False).
+    minimize : bool
+        Run ChimeraX minimize on each model after building (max_steps=1000).
+        Calls ``chimerax.minimize.cmd.cmd_minimize`` directly.
+        Requires ChimeraX 1.11+; warns and skips if the module is
+        unavailable (default: False).
+
+    Raises
+    ------
+    UserError
+        If input format is invalid, name is invalid,
+        conformers is out of range, or RDKit fails.
+    """
+    fmt = _detect_format(input_str, format)
+    name = _validate_name(name)
+
+    if conformers < 1 or conformers > _MAX_CONFORMERS:
+        raise UserError(
+            f"conformers must be between 1 and {_MAX_CONFORMERS}, got {conformers}"
+        )
+
+    try:
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            conformer_list = _rdkit_generate(
+                input_str, fmt, num_confs=conformers, optimize=optimize
+            )
+        for w in caught_warnings:
+            session.logger.warning(str(w.message))
+    except ValueError as e:
+        raise UserError(str(e)) from e
+    except RuntimeError as e:
+        raise UserError(f"RDKit error: {e}") from e
+
+    if not isinstance(conformer_list, list) or len(conformer_list) == 0:
+        raise UserError("RDKit output contains no conformers")
+
+    models = []
+    try:
+        for i, mol_data in enumerate(conformer_list):
+            if len(conformer_list) == 1:
+                model_name = name
+            else:
+                model_name = f"{name}_{i + 1}"
+            model = _build_model(session, mol_data, model_name)
+            models.append(model)
+    except Exception:
+        for m in models:
+            try:
+                m.delete()
+            except Exception as cleanup_err:
+                session.logger.warning(
+                    f"cleanup: failed to delete model: {cleanup_err}"
+                )
+        raise
+
+    session.models.add(models)
+
+    if not hydrogen:
+        for model in models:
+            model_spec = f"#{model.id_string}"
+            run(session, f"hide {model_spec} & H")
+
+    summary_flags = []
+    if optimize:
+        summary_flags.append("optimized")
+
+    if minimize:
+        try:
+            from chimerax.minimize.cmd import cmd_minimize as _chimerax_minimize
+        except ImportError as import_err:
+            _chimerax_minimize = None
+            session.logger.warning(
+                f"minimize is unavailable (import failed: {import_err}); skipping"
+            )
+            summary_flags.append("minimize skipped (unavailable)")
+
+        if _chimerax_minimize is not None:
+            failed = []
+            for model in models:
+                try:
+                    _chimerax_minimize(session, model, max_steps=1000)
+                except Exception as e:
+                    session.logger.warning(
+                        f"minimize failed for #{model.id_string}: {e}"
+                    )
+                    failed.append(model.id_string)
+            if failed:
+                summary_flags.append(f"minimized with {len(failed)} failure(s)")
+            else:
+                summary_flags.append("minimized")
+            session.logger.warning(
+                "Tip: use the minimize command directly for advanced options"
+            )
+
+    actual_count = len(conformer_list)
+    if actual_count == 1:
+        count_part = "1 conformer generated"
+    elif conformers > 1 and actual_count < conformers:
+        count_part = (
+            f"{actual_count}/{conformers} conformers generated (duplicates pruned)"
+        )
+    else:
+        count_part = f"{actual_count} conformers generated"
+
+    if summary_flags:
+        summary = f"rdkconf: {count_part} [{', '.join(summary_flags)}]"
+    else:
+        summary = f"rdkconf: {count_part}"
+
+    session.logger.info(summary)
+
+
+rdkconf_desc = CmdDesc(
+    required=[("input_str", StringArg)],
+    keyword=[
+        ("format", StringArg),
+        ("name", StringArg),
+        ("hydrogen", BoolArg),
+        ("conformers", IntArg),
+        ("optimize", BoolArg),
+        ("minimize", BoolArg),
+    ],
+    synopsis="Generate 3D conformer(s) from molecular notation using RDKit ETKDGv3",
+)

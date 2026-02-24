@@ -4,10 +4,11 @@ Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in
 
 Two installable bundles are provided. Both register the same `rdkconf` command — install one OR the other.
 
-| Bundle | How RDKit runs | Pros | Cons |
-|--------|---------------|------|------|
-| **bundle-direct** | Imported directly into ChimeraX Python | Simple, fast, no extra tools | Adds rdkit to ChimeraX's Python |
-| **bundle-uv** | Isolated subprocess via [uv](https://docs.astral.sh/uv/) + [PEP 723](https://peps.python.org/pep-0723/) | Zero environment pollution | Requires uv, slightly slower |
+| Option | Bundle | How RDKit runs | ChimeraX pollution |
+|--------|--------|---------------|-------------------|
+| **A** | bundle-direct | Imported directly into ChimeraX Python | rdkit added |
+| **B** | bundle-uv | Isolated subprocess via uv (installed in ChimeraX) | uv added |
+| **C** | bundle-uv | Isolated subprocess via external [uv](https://docs.astral.sh/uv/) | None |
 
 ## Requirements
 
@@ -37,9 +38,9 @@ ChimeraX --nogui --exit --cmd 'devel install .'
 
 > **Note:** `devel install` must be run from the bundle directory (`cd` then `devel install .`). Passing an absolute path does not work due to a ChimeraX bundle builder limitation.
 
-### Option B: uv subprocess (zero ChimeraX pollution)
+### Option B: uv subprocess (uv installed in ChimeraX)
 
-Install uv into ChimeraX, then install the bundle.
+Install uv into ChimeraX's Python, then install the bundle. RDKit itself runs in an isolated subprocess — only uv is added to ChimeraX.
 
 **From ChimeraX command line (GUI):**
 
@@ -57,13 +58,27 @@ cd /path/to/chimerax-rdkit-conformer/bundle-uv
 ChimeraX --nogui --exit --cmd 'devel install .'
 ```
 
-With this option, RDKit runs in an isolated subprocess managed by uv — ChimeraX's own packages are not affected.
+### Option C: uv subprocess (zero ChimeraX pollution)
 
-If uv is installed outside ChimeraX, you can point the bundle to it:
+If uv is already installed on your system, you can skip `pip install uv` entirely — nothing is added to ChimeraX's Python.
+
+**From ChimeraX command line (GUI):**
 
 ```
+cd /path/to/chimerax-rdkit-conformer/bundle-uv
+devel install .
 rdkconf uvPath ~/.local/bin/uv
 ```
+
+**From terminal:**
+
+```bash
+cd /path/to/chimerax-rdkit-conformer/bundle-uv
+ChimeraX --nogui --exit --cmd 'devel install .'
+ChimeraX --nogui --exit --cmd 'rdkconf uvPath ~/.local/bin/uv'
+```
+
+The `uvPath` setting is saved persistently — you only need to set it once.
 
 ## Usage
 

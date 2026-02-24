@@ -116,18 +116,23 @@ _MAX_CONFORMERS = 50
 
 
 def input_to_json(
-    input_str: str, fmt: str = "smiles", num_confs: int = 1
+    input_str: str,
+    fmt: str = "smiles",
+    num_confs: int = 1,
+    optimize: bool = False,
 ) -> list[dict]:
     """Convert molecular notation to 3D JSON dicts using ETKDGv3.
 
-    Generates 3D coordinates via ETKDGv3 embedding, then optimizes geometry
-    using MMFF force field. If MMFF optimization fails or does not converge,
-    a warning is emitted and coordinates are returned as-is.
+    Generates 3D coordinates via ETKDGv3 embedding. When *optimize* is True,
+    geometry is refined using the MMFF force field. If MMFF optimization
+    fails or does not converge, a warning is emitted and coordinates are
+    returned as-is.
 
     Args:
         input_str: Molecular notation string.
         fmt: Input format (default: smiles).
         num_confs: Number of conformers to generate (default: 1, max: 50).
+        optimize: Run MMFF force field optimization (default: False).
 
     Returns:
         List of dicts, each with 'atoms' and 'bonds' keys.
@@ -152,19 +157,20 @@ def input_to_json(
         if result == -1:
             raise RuntimeError(f"Failed to generate 3D coordinates for: {input_str}")
 
-        opt_result = AllChem.MMFFOptimizeMolecule(mol)
-        if opt_result == -1:
-            warnings.warn(
-                f"MMFF force field setup failed for: {input_str}. "
-                "3D coordinates are unoptimized.",
-                stacklevel=2,
-            )
-        elif opt_result == 1:
-            warnings.warn(
-                f"MMFF optimization did not converge for: {input_str}. "
-                "3D coordinates may have suboptimal geometry.",
-                stacklevel=2,
-            )
+        if optimize:
+            opt_result = AllChem.MMFFOptimizeMolecule(mol)
+            if opt_result == -1:
+                warnings.warn(
+                    f"MMFF force field setup failed for: {input_str}. "
+                    "3D coordinates are unoptimized.",
+                    stacklevel=2,
+                )
+            elif opt_result == 1:
+                warnings.warn(
+                    f"MMFF optimization did not converge for: {input_str}. "
+                    "3D coordinates may have suboptimal geometry.",
+                    stacklevel=2,
+                )
 
         return [mol_to_json(mol)]
     else:
@@ -173,20 +179,21 @@ def input_to_json(
         if len(conf_ids) == 0:
             raise RuntimeError(f"Failed to generate any 3D conformers for: {input_str}")
 
-        opt_results = AllChem.MMFFOptimizeMoleculeConfs(mol)
-        for i, (converged, _energy) in enumerate(opt_results):
-            if converged == -1:
-                warnings.warn(
-                    f"MMFF force field setup failed for conformer {i} of: "
-                    f"{input_str}. 3D coordinates are unoptimized.",
-                    stacklevel=2,
-                )
-            elif converged == 1:
-                warnings.warn(
-                    f"MMFF optimization did not converge for conformer {i} of: "
-                    f"{input_str}. 3D coordinates may have suboptimal geometry.",
-                    stacklevel=2,
-                )
+        if optimize:
+            opt_results = AllChem.MMFFOptimizeMoleculeConfs(mol)
+            for i, (converged, _energy) in enumerate(opt_results):
+                if converged == -1:
+                    warnings.warn(
+                        f"MMFF force field setup failed for conformer {i} of: "
+                        f"{input_str}. 3D coordinates are unoptimized.",
+                        stacklevel=2,
+                    )
+                elif converged == 1:
+                    warnings.warn(
+                        f"MMFF optimization did not converge for conformer {i} of: "
+                        f"{input_str}. 3D coordinates may have suboptimal geometry.",
+                        stacklevel=2,
+                    )
 
         return [mol_to_json(mol, conf_id=conf_id) for conf_id in conf_ids]
 
@@ -210,10 +217,21 @@ def main() -> None:
         default=1,
         help="Number of conformers to generate (default: 1, max: 50)",
     )
+    parser.add_argument(
+        "--optimize",
+        action="store_true",
+        default=False,
+        help="Run MMFF force field optimization (default: off)",
+    )
     args = parser.parse_args()
 
     try:
-        data = input_to_json(args.input, args.format, num_confs=args.conformers)
+        data = input_to_json(
+            args.input,
+            args.format,
+            num_confs=args.conformers,
+            optimize=args.optimize,
+        )
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

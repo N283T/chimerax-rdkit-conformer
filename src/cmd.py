@@ -120,6 +120,7 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True):
     cmd_args = [
         uv_path,
         "run",
+        "--no-project",
         "--script",
         str(script_path),
         input_str,

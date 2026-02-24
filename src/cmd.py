@@ -46,9 +46,8 @@ def _find_uv(session) -> str:
 
     Resolution order:
     1. User-configured path via ``rdkconf uvPath``
-    2. System PATH (``shutil.which``)
-    3. Well-known installation paths (for GUI-launched apps
-       where PATH is minimal)
+    2. ChimeraX user bin directory (``pip install uv``)
+    3. System PATH (``shutil.which``)
 
     If the user-configured path is set but does not point to an
     existing executable, a warning is logged and resolution
@@ -63,21 +62,24 @@ def _find_uv(session) -> str:
             f"configured uv path not found: {settings.uv_path}; trying auto-detect"
         )
 
+    # Check ChimeraX user bin directory (pip install uv)
+    try:
+        from chimerax import app_dirs
+
+        cx_uv = Path(app_dirs.user_data_dir).joinpath("bin", "uv")
+        if cx_uv.is_file() and os.access(cx_uv, os.X_OK):
+            return str(cx_uv)
+    except ImportError:
+        pass
+
     uv_path = shutil.which("uv")
     if uv_path is not None:
         return uv_path
 
-    # GUI launch fallback: check well-known installation paths
-    home = Path.home()
-    for candidate in [
-        home.joinpath(".local", "bin", "uv"),
-        home.joinpath(".nix-profile", "bin", "uv"),
-        home.joinpath(".cargo", "bin", "uv"),
-    ]:
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
-
-    raise UserError("uv not found. Install uv: https://docs.astral.sh/uv/")
+    raise UserError(
+        "uv not found. Run 'pip install uv' in ChimeraX, "
+        "or set the path with 'rdkconf uvPath <path>'"
+    )
 
 
 def _validate_name(name: str) -> str:

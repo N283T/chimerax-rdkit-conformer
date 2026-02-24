@@ -48,24 +48,31 @@ rdkconf CCO conformers 10 name EtOH               # Named multi-conformers
 | FASTA | `fasta` | No |
 | HELM | `helm` | No |
 
-### uv Path Configuration
+### uv Setup
 
 This bundle requires [uv](https://docs.astral.sh/uv/) to manage the RDKit subprocess.
-If uv is not installed, follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
-You can check your uv path with:
+**Option A: Install uv into ChimeraX via pip**
 
-```bash
-which uv
+Run the following in ChimeraX's command line:
+
+```
+pip install uv
 ```
 
-When ChimeraX is launched from a GUI (e.g. macOS Finder), the system PATH may not include user-installed tools. The bundle auto-detects uv from well-known paths (`~/.local/bin`, `~/.cargo/bin`, etc.), but you can also configure it explicitly:
+This places the uv binary in ChimeraX's user directory and is automatically detected by the bundle. The RDKit subprocess runs in an isolated environment managed by uv, so ChimeraX's own packages are not affected. You may need to re-run `pip install uv` after updating ChimeraX.
+
+**Option B: Use an existing uv installation**
+
+If uv is already installed on your system (`which uv` to check), you can point the bundle to it. This is useful when ChimeraX is launched from a GUI where the system PATH may not include user-installed tools:
 
 ```
 rdkconf uvPath                         # Show current setting and resolved path
 rdkconf uvPath ~/.local/bin/uv         # Set path persistently
 rdkconf uvPath ""                      # Reset to auto-detect
 ```
+
+If uv is not installed yet, follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## How It Works
 

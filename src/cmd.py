@@ -158,7 +158,16 @@ def _build_model(session, mol_data, name="UNL"):
     return s
 
 
-def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True, conformers=1):
+def rdkconf(
+    session,
+    input_str,
+    format=None,
+    name="UNL",
+    hydrogen=True,
+    conformers=1,
+    optimize=False,
+    minimize=False,
+):
     """Generate 3D conformer(s) from molecular notation using RDKit ETKDGv3.
 
     Parameters
@@ -174,6 +183,13 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True, conforme
         Show hydrogens (default: True).
     conformers : int
         Number of conformers to generate (default: 1, max: 50).
+    optimize : bool
+        Run RDKit MMFF94 force-field optimization in the subprocess
+        before returning coordinates (default: False).
+    minimize : bool
+        Run ChimeraX ``minimize`` (AMBER ff14SB) on each model after
+        building.  Requires ChimeraX 1.11+; silently skipped if the
+        command is unavailable (default: False).
 
     Raises
     ------
@@ -205,6 +221,8 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True, conforme
         "--conformers",
         str(conformers),
     ]
+    if optimize:
+        cmd_args.append("--optimize")
 
     try:
         result = subprocess.run(
@@ -251,6 +269,17 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True, conforme
             model_spec = f"#{model.id_string}"
             run(session, f"hide {model_spec} & H")
 
+    if minimize:
+        for model in models:
+            model_spec = f"#{model.id_string}"
+            try:
+                run(session, f"minimize {model_spec} maxSteps 1000")
+            except Exception:
+                session.logger.warning(
+                    f"minimize command failed for {model_spec} "
+                    "(requires ChimeraX 1.11+); skipping AMBER optimization"
+                )
+
     actual_count = len(conformer_list)
     if conformers > 1 and actual_count < conformers:
         session.logger.info(
@@ -270,6 +299,8 @@ rdkconf_desc = CmdDesc(
         ("name", StringArg),
         ("hydrogen", BoolArg),
         ("conformers", IntArg),
+        ("optimize", BoolArg),
+        ("minimize", BoolArg),
     ],
     synopsis="Generate 3D conformer(s) from molecular notation using RDKit ETKDGv3",
 )

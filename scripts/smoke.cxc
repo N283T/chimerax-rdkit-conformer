@@ -5,4 +5,10 @@ rdkconf c1ccccc1
 rdkconf "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3"
 # Sequence with explicit format
 rdkconf GGG format sequence
+# Custom name
+rdkconf CCO name EtOH
+# Hide hydrogens
+rdkconf CCO hydrogen false
+# Multiple conformers
+rdkconf c1ccccc1 conformers 3
 log show

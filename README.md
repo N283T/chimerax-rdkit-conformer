@@ -33,7 +33,8 @@ rdkconf ">seq\nGGG" format fasta                   # FASTA format
 rdkconf "PEPTIDE1{G.G.G}$$$$" format helm          # HELM notation
 rdkconf CCO name EtOH                              # Custom residue name
 rdkconf CCO hydrogen false                         # Hide hydrogens
-rdkconf CCO output ~/ethanol.sdf                   # Save SDF file
+rdkconf c1ccccc1 conformers 5                     # Multiple conformers
+rdkconf CCO conformers 10 name EtOH               # Named multi-conformers
 ```
 
 ### Supported Formats
@@ -53,7 +54,8 @@ rdkconf CCO output ~/ethanol.sdf                   # Save SDF file
 ChimeraX's built-in SMILES support (`open smiles:CCO`) depends on NCI's web service
 (requires internet, no control over 3D generation quality). This bundle uses RDKit
 ETKDGv3 locally via `uv run --script` subprocess for high-quality 3D coordinate
-generation without network dependency.
+generation without network dependency. The 3D structure is built directly in memory
+using ChimeraX's AtomicStructure API — no intermediate files are written.
 
 ## Development
 

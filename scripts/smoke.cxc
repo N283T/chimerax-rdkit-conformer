@@ -9,4 +9,6 @@ rdkconf GGG format sequence
 rdkconf CCO name EtOH
 # Hide hydrogens
 rdkconf CCO hydrogen false
+# Multiple conformers
+rdkconf c1ccccc1 conformers 3
 log show

@@ -33,6 +33,8 @@ rdkconf ">seq\nGGG" format fasta                   # FASTA format
 rdkconf "PEPTIDE1{G.G.G}$$$$" format helm          # HELM notation
 rdkconf CCO name EtOH                              # Custom residue name
 rdkconf CCO hydrogen false                         # Hide hydrogens
+rdkconf c1ccccc1 conformers 5                     # Multiple conformers
+rdkconf CCO conformers 10 name EtOH               # Named multi-conformers
 ```
 
 ### Supported Formats

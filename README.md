@@ -1,43 +1,51 @@
 # ChimeraX-RDKitConformer
 
-Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in ChimeraX. Uses [uv](https://docs.astral.sh/uv/) and [PEP 723](https://peps.python.org/pep-0723/) to manage dependencies automatically without polluting ChimeraX's Python environment.
+Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in ChimeraX.
+
+Two installable bundles are provided. Both register the same `rdkconf` command — install one OR the other.
+
+| Bundle | How RDKit runs | Pros | Cons |
+|--------|---------------|------|------|
+| **bundle-direct** | Imported directly into ChimeraX Python | Simple, fast, no extra tools | Adds rdkit to ChimeraX's Python |
+| **bundle-uv** | Isolated subprocess via [uv](https://docs.astral.sh/uv/) + [PEP 723](https://peps.python.org/pep-0723/) | Zero environment pollution | Requires uv, slightly slower |
 
 ## Requirements
 
 - [ChimeraX](https://www.cgl.ucsf.edu/chimerax/) 1.6+ (1.11+ for `minimize` keyword)
-- [uv](https://docs.astral.sh/uv/) (manages RDKit dependency automatically)
 
 ## Installation
 
-### 1. Install the bundle
+### Option A: Direct RDKit (recommended for simplicity)
 
-```bash
-ChimeraX --nogui --exit --cmd 'devel install .'
+Install RDKit into ChimeraX's Python, then install the bundle:
+
+```
+pip install rdkit
 ```
 
-### 2. Install uv
+```bash
+ChimeraX --nogui --exit --cmd 'devel install bundle-direct'
+```
 
-**Option A: Install uv into ChimeraX via pip**
+### Option B: uv subprocess (zero ChimeraX pollution)
 
-Run the following in ChimeraX's command line:
+Install uv into ChimeraX, then install the bundle:
 
 ```
 pip install uv
 ```
 
-This places the uv binary in ChimeraX's user directory and is automatically detected by the bundle. The RDKit subprocess runs in an isolated environment managed by uv, so ChimeraX's own packages are not affected. You may need to re-run `pip install uv` after updating ChimeraX.
-
-**Option B: Use an existing uv installation**
-
-If uv is already installed on your system (`which uv` to check), you can point the bundle to it. This is useful when ChimeraX is launched from a GUI where the system PATH may not include user-installed tools:
-
-```
-rdkconf uvPath                         # Show current setting and resolved path
-rdkconf uvPath ~/.local/bin/uv         # Set path persistently
-rdkconf uvPath ""                      # Reset to auto-detect
+```bash
+ChimeraX --nogui --exit --cmd 'devel install bundle-uv'
 ```
 
-If uv is not installed yet, follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+With this option, RDKit runs in an isolated subprocess managed by uv — ChimeraX's own packages are not affected.
+
+If uv is installed outside ChimeraX, you can point the bundle to it:
+
+```
+rdkconf uvPath ~/.local/bin/uv
+```
 
 ## Usage
 
@@ -76,15 +84,22 @@ rdkconf CCO conformers 10 name EtOH               # Named multi-conformers
 
 ChimeraX's built-in SMILES support (`open smiles:CCO`) depends on NCI's web service
 (requires internet, no control over 3D generation quality). This bundle uses RDKit
-ETKDGv3 locally via `uv run --script` subprocess for high-quality 3D coordinate
-generation without network dependency. The 3D structure is built directly in memory
-using ChimeraX's AtomicStructure API — no intermediate files are written.
+ETKDGv3 locally for high-quality 3D coordinate generation without network dependency.
+The 3D structure is built directly in memory using ChimeraX's AtomicStructure API — no
+intermediate files are written.
 
 ## Development
 
 ```bash
-ChimeraX --nogui --exit --cmd 'devel build .'    # Build wheel
-ChimeraX --nogui --exit --cmd 'devel install .'   # Install to ChimeraX
+# Build wheel
+ChimeraX --nogui --exit --cmd 'devel build bundle-direct'
+
+# Install to ChimeraX
+ChimeraX --nogui --exit --cmd 'devel install bundle-direct'
+
+# Run tests (either bundle)
+cd bundle-direct && uv run --no-project --with pytest --with rdkit pytest tests/ -v
+cd bundle-uv && uv run --no-project --with pytest --with rdkit pytest tests/ -v
 ```
 
 ## License

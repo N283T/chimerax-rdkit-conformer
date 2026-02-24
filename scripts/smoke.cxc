@@ -9,6 +9,8 @@ rdkconf GGG format sequence
 rdkconf CCO name EtOH
 # Hide hydrogens
 rdkconf CCO hydrogen false
-# Multiple conformers
-rdkconf c1ccccc1 conformers 3
+# MMFF optimization
+rdkconf CCO optimize true name EtOH_mmff
+# AMBER minimization (ChimeraX 1.11+ only)
+rdkconf CCO minimize true name EtOH_amber
 log show

@@ -100,7 +100,7 @@ class TestInputToJson:
         with patch("rdkit.Chem.AllChem.MMFFOptimizeMolecule", return_value=-1):
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
-                result = script_module.input_to_json("CCO", "smiles")
+                result = script_module.input_to_json("CCO", "smiles", optimize=True)
                 assert len(w) == 1
                 assert "MMFF force field setup failed" in str(w[0].message)
         assert "atoms" in result[0]
@@ -111,7 +111,7 @@ class TestInputToJson:
         with patch("rdkit.Chem.AllChem.MMFFOptimizeMolecule", return_value=1):
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
-                result = script_module.input_to_json("CCO", "smiles")
+                result = script_module.input_to_json("CCO", "smiles", optimize=True)
                 assert len(w) == 1
                 assert "did not converge" in str(w[0].message)
         assert "atoms" in result[0]
@@ -300,3 +300,43 @@ class TestMultiConformer:
                 RuntimeError, match="Failed to generate any 3D conformers"
             ):
                 script_module.input_to_json("CCO", "smiles", num_confs=3)
+
+
+class TestOptimizeFlag:
+    """Tests for the optimize parameter in input_to_json()."""
+
+    def test_optimize_false_skips_mmff(self, script_module):
+        """When optimize=False, MMFF should not be called."""
+        with patch("rdkit.Chem.AllChem.MMFFOptimizeMolecule") as mock_mmff:
+            result = script_module.input_to_json("CCO", "smiles", optimize=False)
+            mock_mmff.assert_not_called()
+        assert len(result[0]["atoms"]) > 0
+
+    def test_optimize_true_calls_mmff(self, script_module):
+        """When optimize=True, MMFF should be called."""
+        with patch(
+            "rdkit.Chem.AllChem.MMFFOptimizeMolecule", return_value=0
+        ) as mock_mmff:
+            script_module.input_to_json("CCO", "smiles", optimize=True)
+            mock_mmff.assert_called_once()
+
+    def test_optimize_default_is_false(self, script_module):
+        """Default optimize=False means no MMFF."""
+        with patch("rdkit.Chem.AllChem.MMFFOptimizeMolecule") as mock_mmff:
+            script_module.input_to_json("CCO", "smiles")
+            mock_mmff.assert_not_called()
+
+    def test_optimize_true_multi_conformer(self, script_module):
+        """optimize=True with multi-conformer calls MMFFOptimizeMoleculeConfs."""
+        with patch(
+            "rdkit.Chem.AllChem.MMFFOptimizeMoleculeConfs",
+            return_value=[(0, 1.0), (0, 2.0)],
+        ) as mock_mmff:
+            script_module.input_to_json("CCO", "smiles", num_confs=3, optimize=True)
+            mock_mmff.assert_called_once()
+
+    def test_optimize_false_multi_conformer_skips_mmff(self, script_module):
+        """optimize=False with multi-conformer skips MMFFOptimizeMoleculeConfs."""
+        with patch("rdkit.Chem.AllChem.MMFFOptimizeMoleculeConfs") as mock_mmff:
+            script_module.input_to_json("CCO", "smiles", num_confs=3, optimize=False)
+            mock_mmff.assert_not_called()

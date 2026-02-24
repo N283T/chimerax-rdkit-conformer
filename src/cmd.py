@@ -279,6 +279,10 @@ def rdkconf(
                     f"minimize command failed for {model_spec} "
                     f"(requires ChimeraX 1.11+): {e}"
                 )
+        session.logger.info(
+            "Note: rdkconf runs minimize with default settings (maxSteps 1000). "
+            "For advanced options, use the minimize command directly."
+        )
 
     actual_count = len(conformer_list)
     if conformers > 1 and actual_count < conformers:

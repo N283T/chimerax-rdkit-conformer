@@ -4,7 +4,7 @@ Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in
 
 ## Requirements
 
-- [ChimeraX](https://www.cgl.ucsf.edu/chimerax/) 1.6+
+- [ChimeraX](https://www.cgl.ucsf.edu/chimerax/) 1.6+ (1.11+ for `minimize` keyword)
 - [uv](https://docs.astral.sh/uv/) (manages RDKit dependency automatically)
 
 ## Installation
@@ -33,6 +33,9 @@ rdkconf ">seq\nGGG" format fasta                   # FASTA format
 rdkconf "PEPTIDE1{G.G.G}$$$$" format helm          # HELM notation
 rdkconf CCO name EtOH                              # Custom residue name
 rdkconf CCO hydrogen false                         # Hide hydrogens
+rdkconf CCO optimize true                          # RDKit MMFF optimization
+rdkconf CCO minimize true                          # ChimeraX AMBER minimization (1.11+)
+rdkconf CCO optimize true minimize true            # Both: MMFF then AMBER
 rdkconf c1ccccc1 conformers 5                     # Multiple conformers
 rdkconf CCO conformers 10 name EtOH               # Named multi-conformers
 ```

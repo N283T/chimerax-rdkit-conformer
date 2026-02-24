@@ -24,11 +24,35 @@ def _find_script() -> Path:
 
 
 def _find_uv() -> str:
-    """Find the uv executable."""
+    """Find the uv executable.
+
+    On macOS, GUI-launched apps receive a minimal PATH that typically
+    excludes user-installed tools.  When ``shutil.which`` fails, this
+    function resolves the full PATH from a login shell as a fallback.
+    """
     uv_path = shutil.which("uv")
-    if uv_path is None:
-        raise UserError("uv not found in PATH. Install uv: https://docs.astral.sh/uv/")
-    return uv_path
+    if uv_path is not None:
+        return uv_path
+
+    # GUI launch fallback: resolve PATH from login shell
+    import os
+
+    shell = os.environ.get("SHELL", "/bin/zsh")
+    try:
+        result = subprocess.run(
+            [shell, "-lc", "which uv"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            candidate = result.stdout.strip()
+            if candidate and Path(candidate).is_file():
+                return candidate
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+    raise UserError("uv not found in PATH. Install uv: https://docs.astral.sh/uv/")
 
 
 def _validate_name(name: str) -> str:

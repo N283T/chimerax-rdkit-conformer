@@ -12,10 +12,6 @@ Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in
 ### From source (development)
 
 ```bash
-# Using echidna
-echidna install
-
-# Or directly with ChimeraX
 ChimeraX --nogui --exit --cmd 'devel install .'
 ```
 
@@ -52,6 +48,25 @@ rdkconf CCO conformers 10 name EtOH               # Named multi-conformers
 | FASTA | `fasta` | No |
 | HELM | `helm` | No |
 
+### uv Path Configuration
+
+This bundle requires [uv](https://docs.astral.sh/uv/) to manage the RDKit subprocess.
+If uv is not installed, follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+
+You can check your uv path with:
+
+```bash
+which uv
+```
+
+When ChimeraX is launched from a GUI (e.g. macOS Finder), the system PATH may not include user-installed tools. The bundle auto-detects uv from well-known paths (`~/.local/bin`, `~/.cargo/bin`, etc.), but you can also configure it explicitly:
+
+```
+rdkconf uvPath                         # Show current setting and resolved path
+rdkconf uvPath ~/.local/bin/uv         # Set path persistently
+rdkconf uvPath ""                      # Reset to auto-detect
+```
+
 ## How It Works
 
 ChimeraX's built-in SMILES support (`open smiles:CCO`) depends on NCI's web service
@@ -63,10 +78,8 @@ using ChimeraX's AtomicStructure API — no intermediate files are written.
 ## Development
 
 ```bash
-echidna build                          # Build wheel
-echidna install                        # Install to ChimeraX
-echidna run                            # Build, install, and launch ChimeraX
-echidna run --script scripts/smoke.cxc # Run with smoke test
+ChimeraX --nogui --exit --cmd 'devel build .'    # Build wheel
+ChimeraX --nogui --exit --cmd 'devel install .'   # Install to ChimeraX
 ```
 
 ## License

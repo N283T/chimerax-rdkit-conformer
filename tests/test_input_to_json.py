@@ -282,3 +282,21 @@ class TestMultiConformer:
         assert isinstance(result, list)
         assert len(result) >= 1
         assert len(result) <= 10
+
+    def test_zero_conformers_raises(self, script_module):
+        """num_confs=0 should raise ValueError."""
+        with pytest.raises(ValueError, match="conformers must be between 1 and 50"):
+            script_module.input_to_json("CCO", "smiles", num_confs=0)
+
+    def test_over_max_conformers_raises(self, script_module):
+        """num_confs=51 should raise ValueError."""
+        with pytest.raises(ValueError, match="conformers must be between 1 and 50"):
+            script_module.input_to_json("CCO", "smiles", num_confs=51)
+
+    def test_embed_multiple_failure_raises_runtime_error(self, script_module):
+        """RuntimeError when EmbedMultipleConfs produces zero conformers."""
+        with patch("rdkit.Chem.AllChem.EmbedMultipleConfs", return_value=[]):
+            with pytest.raises(
+                RuntimeError, match="Failed to generate any 3D conformers"
+            ):
+                script_module.input_to_json("CCO", "smiles", num_confs=3)

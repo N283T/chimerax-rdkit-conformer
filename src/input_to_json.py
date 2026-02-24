@@ -10,6 +10,7 @@
 import argparse
 import json
 import sys
+import warnings
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -92,8 +93,6 @@ def mol_to_json(mol: Chem.Mol, conf_id: int = -1) -> dict:
     for bond in mol.GetBonds():
         bond_order = bond_type_map.get(bond.GetBondType())
         if bond_order is None:
-            import warnings
-
             warnings.warn(
                 f"Unknown bond type {bond.GetBondType().name} between atoms "
                 f"{bond.GetBeginAtomIdx()} and {bond.GetEndAtomIdx()}, "
@@ -112,6 +111,7 @@ def mol_to_json(mol: Chem.Mol, conf_id: int = -1) -> dict:
     return {"atoms": atoms, "bonds": bonds}
 
 
+# Duplicated in cmd.py (separate Python processes cannot share imports).
 _MAX_CONFORMERS = 50
 
 
@@ -143,8 +143,6 @@ def input_to_json(
 
     mol = parse_input(input_str, fmt)
     mol = Chem.AddHs(mol)
-
-    import warnings
 
     params = AllChem.ETKDGv3()
     params.randomSeed = 42
@@ -190,10 +188,7 @@ def input_to_json(
                     stacklevel=2,
                 )
 
-        conformers = []
-        for conf_id in conf_ids:
-            conformers.append(mol_to_json(mol, conf_id=conf_id))
-        return conformers
+        return [mol_to_json(mol, conf_id=conf_id) for conf_id in conf_ids]
 
 
 def main() -> None:

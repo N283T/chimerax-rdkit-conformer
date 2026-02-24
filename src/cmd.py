@@ -42,6 +42,7 @@ def _validate_name(name: str) -> str:
 
 _VALID_FORMATS = {"smiles", "inchi", "fasta", "sequence", "helm", "dna", "rna"}
 
+# Duplicated in input_to_json.py (separate Python processes cannot share imports).
 _MAX_CONFORMERS = 50
 
 
@@ -207,8 +208,8 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True, conforme
             text=True,
             timeout=60,
         )
-    except subprocess.TimeoutExpired:
-        raise UserError("RDKit 3D generation timed out (60s)")
+    except subprocess.TimeoutExpired as e:
+        raise UserError("RDKit 3D generation timed out (60s)") from e
 
     if result.returncode != 0:
         raise UserError(f"RDKit error: {result.stderr.strip()}")
@@ -219,7 +220,7 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True, conforme
     try:
         conformer_list = json.loads(result.stdout)
     except json.JSONDecodeError as e:
-        raise UserError(f"Failed to parse RDKit output: {e}")
+        raise UserError(f"Failed to parse RDKit output: {e}") from e
 
     if not isinstance(conformer_list, list) or len(conformer_list) == 0:
         raise UserError("RDKit output contains no conformers")

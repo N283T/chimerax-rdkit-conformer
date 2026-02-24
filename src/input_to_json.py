@@ -5,12 +5,11 @@
 #     "rdkit",
 # ]
 # ///
-"""Convert molecular notation to 3D SDF using RDKit ETKDGv3."""
+"""Convert molecular notation to 3D JSON using RDKit ETKDGv3."""
 
 import argparse
+import json
 import sys
-import tempfile
-from pathlib import Path
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -49,18 +48,60 @@ def parse_input(input_str: str, fmt: str = "smiles") -> Chem.Mol:
     return mol
 
 
-def input_to_3d(
-    input_str: str, fmt: str = "smiles", output: Path | None = None
-) -> Path:
-    """Convert molecular notation to a 3D SDF file using ETKDGv3.
+def mol_to_json(mol: Chem.Mol) -> dict:
+    """Serialize an RDKit Mol with 3D coordinates to a JSON-compatible dict.
+
+    Args:
+        mol: RDKit Mol object with embedded 3D coordinates and explicit Hs.
+
+    Returns:
+        Dict with 'atoms' (list of element/x/y/z) and 'bonds' (list of begin/end/order).
+    """
+    conf = mol.GetConformer()
+    atoms = []
+    for i in range(mol.GetNumAtoms()):
+        pos = conf.GetAtomPosition(i)
+        atoms.append(
+            {
+                "element": mol.GetAtomWithIdx(i).GetSymbol(),
+                "x": pos.x,
+                "y": pos.y,
+                "z": pos.z,
+            }
+        )
+
+    bond_type_map = {
+        Chem.BondType.SINGLE: 1.0,
+        Chem.BondType.DOUBLE: 2.0,
+        Chem.BondType.TRIPLE: 3.0,
+        Chem.BondType.AROMATIC: 1.5,
+    }
+    bonds = []
+    for bond in mol.GetBonds():
+        bonds.append(
+            {
+                "begin": bond.GetBeginAtomIdx(),
+                "end": bond.GetEndAtomIdx(),
+                "order": bond_type_map.get(bond.GetBondType(), 1.0),
+            }
+        )
+
+    return {"atoms": atoms, "bonds": bonds}
+
+
+def input_to_json(input_str: str, fmt: str = "smiles") -> dict:
+    """Convert molecular notation to a 3D JSON dict using ETKDGv3.
 
     Args:
         input_str: Molecular notation string.
         fmt: Input format (default: smiles).
-        output: Output file path. If None, creates a temp file.
 
     Returns:
-        Path to the generated SDF file.
+        Dict with 'atoms' and 'bonds' keys.
+
+    Raises:
+        ValueError: If format is unsupported or input is invalid.
+        RuntimeError: If 3D coordinate generation fails.
     """
     mol = parse_input(input_str, fmt)
     mol = Chem.AddHs(mol)
@@ -81,19 +122,13 @@ def input_to_3d(
             stacklevel=2,
         )
 
-    if output is None:
-        tmp = tempfile.NamedTemporaryFile(suffix=".sdf", delete=False)
-        output = Path(tmp.name)
-        tmp.close()
-
-    with Chem.SDWriter(str(output)) as writer:
-        writer.write(mol)
-
-    return output
+    return mol_to_json(mol)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert molecular notation to 3D SDF")
+    parser = argparse.ArgumentParser(
+        description="Convert molecular notation to 3D JSON"
+    )
     parser.add_argument("input", help="Molecular notation string")
     parser.add_argument(
         "-f",
@@ -102,13 +137,10 @@ def main() -> None:
         choices=VALID_FORMATS,
         help="Input format (default: smiles)",
     )
-    parser.add_argument(
-        "-o", "--output", type=Path, default=None, help="Output SDF file path"
-    )
     args = parser.parse_args()
 
     try:
-        path = input_to_3d(args.input, args.format, args.output)
+        data = input_to_json(args.input, args.format)
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -116,7 +148,7 @@ def main() -> None:
         print(f"Unexpected error: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(2)
 
-    print(str(path))
+    print(json.dumps(data))
 
 
 if __name__ == "__main__":

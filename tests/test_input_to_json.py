@@ -59,19 +59,21 @@ class TestInputToJson:
 
     def test_smiles_returns_json(self, script_module):
         result = script_module.input_to_json("CCO", "smiles")
-        assert "atoms" in result
-        assert "bonds" in result
-        assert len(result["atoms"]) > 0
-        assert len(result["bonds"]) > 0
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert "atoms" in result[0]
+        assert "bonds" in result[0]
+        assert len(result[0]["atoms"]) > 0
+        assert len(result[0]["bonds"]) > 0
 
     def test_inchi_returns_json(self, script_module):
         inchi = "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3"
         result = script_module.input_to_json(inchi, "inchi")
-        assert len(result["atoms"]) > 0
+        assert len(result[0]["atoms"]) > 0
 
     def test_sequence_returns_json(self, script_module):
         result = script_module.input_to_json("GGG", "sequence")
-        assert len(result["atoms"]) > 0
+        assert len(result[0]["atoms"]) > 0
 
     def test_invalid_input_raises(self, script_module):
         with pytest.raises(ValueError, match="Invalid smiles input"):
@@ -84,8 +86,8 @@ class TestInputToJson:
         result = script_module.input_to_json("CCO", "smiles")
         json_str = json.dumps(result)
         parsed = json.loads(json_str)
-        assert parsed["atoms"] == result["atoms"]
-        assert parsed["bonds"] == result["bonds"]
+        assert parsed[0]["atoms"] == result[0]["atoms"]
+        assert parsed[0]["bonds"] == result[0]["bonds"]
 
     def test_embed_failure_raises_runtime_error(self, script_module):
         """Verify RuntimeError when 3D embedding fails."""
@@ -101,8 +103,8 @@ class TestInputToJson:
                 result = script_module.input_to_json("CCO", "smiles")
                 assert len(w) == 1
                 assert "MMFF force field setup failed" in str(w[0].message)
-        assert "atoms" in result
-        assert len(result["atoms"]) > 0
+        assert "atoms" in result[0]
+        assert len(result[0]["atoms"]) > 0
 
     def test_mmff_non_convergence_warns(self, script_module):
         """When MMFF does not converge, a warning is issued."""
@@ -112,7 +114,7 @@ class TestInputToJson:
                 result = script_module.input_to_json("CCO", "smiles")
                 assert len(w) == 1
                 assert "did not converge" in str(w[0].message)
-        assert "atoms" in result
+        assert "atoms" in result[0]
 
 
 class TestMolToJson:

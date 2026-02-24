@@ -6,6 +6,7 @@ directly from the JSON output.
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -46,13 +47,17 @@ def _find_uv(session) -> str:
     Resolution order:
     1. User-configured path via ``rdkconf uvPath``
     2. System PATH (``shutil.which``)
-    3. Well-known installation paths (for GUI-launched apps on macOS
+    3. Well-known installation paths (for GUI-launched apps
        where PATH is minimal)
+
+    If the user-configured path is set but does not point to an
+    existing executable, a warning is logged and resolution
+    continues with steps 2-3.
     """
     settings = _get_settings(session)
     if settings.uv_path:
         p = Path(settings.uv_path)
-        if p.is_file():
+        if p.is_file() and os.access(p, os.X_OK):
             return str(p)
         session.logger.warning(
             f"configured uv path not found: {settings.uv_path}; trying auto-detect"
@@ -69,7 +74,7 @@ def _find_uv(session) -> str:
         home.joinpath(".nix-profile", "bin", "uv"),
         home.joinpath(".cargo", "bin", "uv"),
     ]:
-        if candidate.is_file():
+        if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
 
     raise UserError("uv not found. Install uv: https://docs.astral.sh/uv/")
@@ -278,6 +283,8 @@ def rdkconf(
         )
     except subprocess.TimeoutExpired as e:
         raise UserError("RDKit 3D generation timed out (60s)") from e
+    except OSError as e:
+        raise UserError(f"Failed to run uv: {e}") from e
 
     if result.returncode != 0:
         raise UserError(f"RDKit error: {result.stderr.strip()}")
@@ -384,7 +391,9 @@ def rdkconf_uv_path(session, path=None):
     """Show or set the path to the uv executable.
 
     When called without arguments, displays the current setting and
-    the resolved uv path.  With a path argument, saves it persistently.
+    the resolved uv path.  With a path argument, validates it exists
+    (tilde expansion is supported) and saves it persistently.
+    Use an empty string to reset to auto-detect.
     """
     settings = _get_settings(session)
 
@@ -398,9 +407,16 @@ def rdkconf_uv_path(session, path=None):
         session.logger.info(f"rdkconf uv resolved: {resolved}")
         return
 
-    p = Path(path).expanduser()
+    if path == "":
+        settings.uv_path = ""
+        session.logger.info("rdkconf uvPath cleared; using auto-detect")
+        return
+
+    p = Path(path).expanduser().resolve()
     if not p.is_file():
         raise UserError(f"uv not found at: {p}")
+    if not os.access(p, os.X_OK):
+        raise UserError(f"uv at {p} is not executable")
     settings.uv_path = str(p)
     session.logger.info(f"rdkconf uvPath saved: {p}")
 

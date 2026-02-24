@@ -1,6 +1,6 @@
 # ChimeraX-RDKitConformer
 
-Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in ChimeraX.
+Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in ChimeraX. Uses [uv](https://docs.astral.sh/uv/) and [PEP 723](https://peps.python.org/pep-0723/) to manage dependencies automatically without polluting ChimeraX's Python environment.
 
 ## Requirements
 

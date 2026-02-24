@@ -11,8 +11,8 @@ from chimerax.core.errors import UserError
 
 
 def _find_script() -> Path:
-    """Locate the bundled smiles_to_sdf.py script."""
-    return Path(__file__).parent.joinpath("smiles_to_sdf.py")
+    """Locate the bundled input_to_sdf.py script."""
+    return Path(__file__).parent.joinpath("input_to_sdf.py")
 
 
 def _find_uv() -> str:
@@ -42,7 +42,28 @@ def _validate_sdf_path(raw_path: str) -> Path:
     return path
 
 
-def rdkconf(session, input_str, output=None, name="UNL", hydrogen=True):
+_VALID_FORMATS = {"smiles", "inchi", "fasta", "sequence", "helm", "dna", "rna"}
+
+
+def _detect_format(input_str: str, user_format: str | None) -> str:
+    """Detect or validate input format.
+
+    Auto-detects InChI (starts with 'InChI='). Defaults to SMILES.
+    """
+    if user_format is not None:
+        fmt = user_format.lower()
+        if fmt not in _VALID_FORMATS:
+            raise UserError(
+                f"Invalid format: {user_format!r}. "
+                f"Valid formats: {', '.join(sorted(_VALID_FORMATS))}"
+            )
+        return fmt
+    if input_str.startswith("InChI="):
+        return "inchi"
+    return "smiles"
+
+
+def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=True):
     """Generate 3D conformer from molecular notation using RDKit ETKDGv3.
 
     Parameters
@@ -50,6 +71,8 @@ def rdkconf(session, input_str, output=None, name="UNL", hydrogen=True):
     session : chimerax.core.session.Session
     input_str : str
         Molecular notation string (SMILES by default).
+    format : str, optional
+        Input format. Auto-detects InChI. Default: smiles.
     output : str, optional
         Save SDF to this path.
     name : str
@@ -57,11 +80,20 @@ def rdkconf(session, input_str, output=None, name="UNL", hydrogen=True):
     hydrogen : bool
         Show hydrogens (default: True).
     """
+    fmt = _detect_format(input_str, format)
     name = _validate_name(name)
     script_path = _find_script()
     uv_path = _find_uv()
 
-    cmd_args = [uv_path, "run", "--script", str(script_path), input_str]
+    cmd_args = [
+        uv_path,
+        "run",
+        "--script",
+        str(script_path),
+        input_str,
+        "--format",
+        fmt,
+    ]
     if output:
         cmd_args.extend(["-o", output])
 
@@ -94,12 +126,13 @@ def rdkconf(session, input_str, output=None, name="UNL", hydrogen=True):
             except OSError:
                 pass
 
-    session.logger.info(f"Generated 3D conformer from: {input_str}")
+    session.logger.info(f"Generated 3D conformer ({fmt}) from: {input_str}")
 
 
 rdkconf_desc = CmdDesc(
     required=[("input_str", StringArg)],
     keyword=[
+        ("format", StringArg),
         ("output", SaveFileNameArg),
         ("name", StringArg),
         ("hydrogen", BoolArg),

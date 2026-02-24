@@ -1,7 +1,7 @@
 """RDKit operations for molecular notation to 3D JSON conversion.
 
-Provides parse_input(), mol_to_json(), and input_to_json() for direct
-RDKit usage without subprocess.
+Provides parse_input(), mol_to_json(), and input_to_json() for
+RDKit-based 3D coordinate generation.
 """
 
 import warnings
@@ -50,7 +50,7 @@ def mol_to_json(mol: Chem.Mol, conf_id: int = -1) -> dict:
         mol: RDKit Mol object. Must have at least one conformer
             (embedded 3D coordinates). Typically with explicit Hs
             added via Chem.AddHs().
-        conf_id: Conformer ID to serialize (default: -1, meaning the last added).
+        conf_id: Conformer ID to serialize (default: -1, meaning the default conformer).
 
     Returns:
         Dict with 'atoms' (list of element/x/y/z) and 'bonds' (list of begin/end/order).
@@ -105,7 +105,6 @@ def mol_to_json(mol: Chem.Mol, conf_id: int = -1) -> dict:
     return {"atoms": atoms, "bonds": bonds}
 
 
-# Duplicated in cmd.py -- keep both in sync.
 _MAX_CONFORMERS = 50
 
 
@@ -118,7 +117,7 @@ def input_to_json(
     """Convert molecular notation to 3D JSON dicts using ETKDGv3.
 
     Generates 3D coordinates via ETKDGv3 embedding. When *optimize* is True,
-    geometry is refined using the MMFF force field. If MMFF optimization
+    geometry is refined using the MMFF94 force field. If MMFF94 optimization
     fails or does not converge, a warning is emitted and coordinates are
     returned as-is.
 
@@ -127,7 +126,7 @@ def input_to_json(
         fmt: Input format (default: smiles).
         num_confs: Number of conformers to generate (default: 1, max: 50).
             When num_confs > 1, RMS pruning (threshold=0.5) removes duplicate conformers.
-        optimize: Run MMFF force field optimization (default: False).
+        optimize: Run MMFF94 force field optimization (default: False).
 
     Returns:
         List of dicts, each with 'atoms' and 'bonds' keys.

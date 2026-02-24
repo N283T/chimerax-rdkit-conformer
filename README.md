@@ -17,7 +17,7 @@ Two installable bundles are provided. Both register the same `rdkconf` command â
 
 ### Option A: Direct RDKit (recommended for simplicity)
 
-Install RDKit into ChimeraX's Python, then install the bundle:
+Install RDKit into ChimeraX's Python, then install the bundle. Run the following in ChimeraX's command line:
 
 ```
 pip install rdkit
@@ -29,7 +29,7 @@ ChimeraX --nogui --exit --cmd 'devel install bundle-direct'
 
 ### Option B: uv subprocess (zero ChimeraX pollution)
 
-Install uv into ChimeraX, then install the bundle:
+Install uv into ChimeraX, then install the bundle. Run the following in ChimeraX's command line:
 
 ```
 pip install uv
@@ -62,8 +62,8 @@ rdkconf "PEPTIDE1{G.G.G}$$$$" format helm          # HELM notation
 rdkconf CCO name EtOH                              # Custom residue name
 rdkconf CCO hydrogen false                         # Hide hydrogens
 rdkconf CCO optimize true                          # RDKit MMFF optimization
-rdkconf CCO minimize true                          # ChimeraX AMBER minimization (1.11+)
-rdkconf CCO optimize true minimize true            # Both: MMFF then AMBER
+rdkconf CCO minimize true                          # ChimeraX minimization (1.11+)
+rdkconf CCO optimize true minimize true            # Both: MMFF then minimize
 rdkconf c1ccccc1 conformers 5                     # Multiple conformers
 rdkconf CCO conformers 10 name EtOH               # Named multi-conformers
 ```

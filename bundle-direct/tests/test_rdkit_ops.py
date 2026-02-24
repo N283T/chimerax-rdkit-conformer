@@ -232,6 +232,36 @@ class TestMolToJson:
         with pytest.raises(ValueError, match="mol_to_json requires a Mol with 3D"):
             script_module.mol_to_json(mol)
 
+    def test_unknown_bond_type_warns_and_defaults_to_single(self, script_module):
+        """Unknown bond types emit a warning and default to order 1.0."""
+        from unittest.mock import MagicMock
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("CC"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+
+        # Patch GetBondType on the first bond to return an unrecognized type
+        original_get_bonds = mol.GetBonds
+
+        def patched_get_bonds():
+            bonds = list(original_get_bonds())
+            fake_bond = MagicMock(wraps=bonds[0])
+            fake_type = MagicMock()
+            fake_type.name = "FAKE"
+            fake_bond.GetBondType = MagicMock(return_value=fake_type)
+            return [fake_bond] + bonds[1:]
+
+        mol.GetBonds = patched_get_bonds
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = script_module.mol_to_json(mol)
+            unknown_warnings = [x for x in w if "Unknown bond type" in str(x.message)]
+            assert len(unknown_warnings) == 1
+            assert "defaulting to 1.0" in str(unknown_warnings[0].message)
+        assert result["bonds"][0]["order"] == 1.0
+
 
 class TestMultiConformer:
     """Tests for multi-conformer generation via input_to_json()."""

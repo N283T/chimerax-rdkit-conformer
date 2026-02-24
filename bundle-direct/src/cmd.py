@@ -5,6 +5,7 @@ directly and building AtomicStructure models from the result.
 """
 
 import re
+import warnings
 
 from chimerax.atomic import AtomicStructure, Bond
 from chimerax.atomic.struct_edit import add_atom, add_bond
@@ -12,7 +13,11 @@ from chimerax.core.commands import CmdDesc, StringArg, BoolArg, IntArg, run
 from chimerax.core.errors import UserError
 from numpy import array, float64
 
-from .rdkit_ops import input_to_json as _rdkit_generate
+from .rdkit_ops import (
+    VALID_FORMATS as _VALID_FORMATS,
+    _MAX_CONFORMERS,
+    input_to_json as _rdkit_generate,
+)
 
 
 def _validate_name(name: str) -> str:
@@ -22,12 +27,6 @@ def _validate_name(name: str) -> str:
             f"Invalid residue name: {name!r} (alphanumeric and underscore only)"
         )
     return name
-
-
-_VALID_FORMATS = {"smiles", "inchi", "fasta", "sequence", "helm", "dna", "rna"}
-
-# Duplicated in rdkit_ops.py -- keep both in sync.
-_MAX_CONFORMERS = 50
 
 
 def _detect_format(input_str: str, user_format: str | None) -> str:
@@ -55,13 +54,13 @@ def _detect_format(input_str: str, user_format: str | None) -> str:
 
 
 def _build_model(session, mol_data, name="UNL"):
-    """Build an AtomicStructure from parsed JSON molecule data.
+    """Build an AtomicStructure from molecule data.
 
     Parameters
     ----------
     session : chimerax.core.session.Session
     mol_data : dict
-        JSON-parsed dict with 'atoms' and 'bonds' keys.
+        Dict with 'atoms' and 'bonds' keys (as returned by rdkit_ops.mol_to_json).
     name : str
         Model and residue name. The residue is placed in chain ' '
         with sequence number 1.
@@ -171,7 +170,7 @@ def rdkconf(
         Run RDKit MMFF94 force-field optimization before returning
         coordinates (default: False).
     minimize : bool
-        Run ChimeraX minimize on each model after building (maxSteps=1000).
+        Run ChimeraX minimize on each model after building (max_steps=1000).
         Calls ``chimerax.minimize.cmd.cmd_minimize`` directly.
         Requires ChimeraX 1.11+; warns and skips if the module is
         unavailable (default: False).
@@ -191,9 +190,13 @@ def rdkconf(
         )
 
     try:
-        conformer_list = _rdkit_generate(
-            input_str, fmt, num_confs=conformers, optimize=optimize
-        )
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            conformer_list = _rdkit_generate(
+                input_str, fmt, num_confs=conformers, optimize=optimize
+            )
+        for w in caught_warnings:
+            session.logger.warning(str(w.message))
     except ValueError as e:
         raise UserError(str(e)) from e
     except RuntimeError as e:
@@ -215,8 +218,10 @@ def rdkconf(
         for m in models:
             try:
                 m.delete()
-            except Exception:
-                pass
+            except Exception as cleanup_err:
+                session.logger.warning(
+                    f"cleanup: failed to delete model: {cleanup_err}"
+                )
         raise
 
     session.models.add(models)
@@ -233,18 +238,19 @@ def rdkconf(
     if minimize:
         try:
             from chimerax.minimize.cmd import cmd_minimize as _chimerax_minimize
-        except ImportError:
+        except ImportError as import_err:
             _chimerax_minimize = None
+            session.logger.warning(
+                f"minimize is unavailable (import failed: {import_err}); skipping"
+            )
+            summary_flags.append("minimize skipped (unavailable)")
 
-        if _chimerax_minimize is None:
-            session.logger.warning("minimize requires ChimeraX 1.11+; skipping")
-            summary_flags.append("minimize skipped (requires 1.11+)")
-        else:
+        if _chimerax_minimize is not None:
             failed = []
             for model in models:
                 try:
                     _chimerax_minimize(session, model, max_steps=1000)
-                except (RuntimeError, ValueError) as e:
+                except Exception as e:
                     session.logger.warning(
                         f"minimize failed for #{model.id_string}: {e}"
                     )

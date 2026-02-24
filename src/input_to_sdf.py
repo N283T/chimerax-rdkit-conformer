@@ -49,7 +49,9 @@ def parse_input(input_str: str, fmt: str = "smiles") -> Chem.Mol:
     return mol
 
 
-def input_to_3d(input_str: str, fmt: str = "smiles", output: Path | None = None) -> Path:
+def input_to_3d(
+    input_str: str, fmt: str = "smiles", output: Path | None = None
+) -> Path:
     """Convert molecular notation to a 3D SDF file using ETKDGv3.
 
     Args:
@@ -69,7 +71,15 @@ def input_to_3d(input_str: str, fmt: str = "smiles", output: Path | None = None)
     if result == -1:
         raise RuntimeError(f"Failed to generate 3D coordinates for: {input_str}")
 
-    AllChem.MMFFOptimizeMolecule(mol)
+    opt_result = AllChem.MMFFOptimizeMolecule(mol)
+    if opt_result == -1:
+        import warnings
+
+        warnings.warn(
+            f"MMFF force field setup failed for: {input_str}. "
+            "3D coordinates are unoptimized.",
+            stacklevel=2,
+        )
 
     if output is None:
         tmp = tempfile.NamedTemporaryFile(suffix=".sdf", delete=False)
@@ -86,7 +96,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Convert molecular notation to 3D SDF")
     parser.add_argument("input", help="Molecular notation string")
     parser.add_argument(
-        "-f", "--format", default="smiles", choices=VALID_FORMATS,
+        "-f",
+        "--format",
+        default="smiles",
+        choices=VALID_FORMATS,
         help="Input format (default: smiles)",
     )
     parser.add_argument(
@@ -99,6 +112,9 @@ def main() -> None:
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(2)
 
     print(str(path))
 

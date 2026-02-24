@@ -42,7 +42,7 @@ def _validate_name(name: str) -> str:
 
 _VALID_FORMATS = {"smiles", "inchi", "fasta", "sequence", "helm", "dna", "rna"}
 
-# Duplicated in input_to_json.py (separate Python processes cannot share imports).
+# Duplicated in input_to_json.py — keep both in sync.
 _MAX_CONFORMERS = 50
 
 
@@ -152,7 +152,7 @@ def _build_model(session, mol_data, name="UNL"):
         try:
             s.delete()
         except Exception as cleanup_err:
-            session.logger.info(f"cleanup: failed to delete model: {cleanup_err}")
+            session.logger.warning(f"cleanup: failed to delete model: {cleanup_err}")
         raise
 
     return s
@@ -187,10 +187,10 @@ def rdkconf(
         Run RDKit MMFF94 force-field optimization in the subprocess
         before returning coordinates (default: False).
     minimize : bool
-        Run ChimeraX minimize (AMBER ff14SB + GAFF via DockPrep) on each
-        model after building.  Calls ``chimerax.minimize.cmd.cmd_minimize``
-        directly.  Requires ChimeraX 1.11+; warns and skips if the module
-        is unavailable (default: False).
+        Run ChimeraX minimize on each model after building (maxSteps=1000).
+        Calls ``chimerax.minimize.cmd.cmd_minimize`` directly.
+        Requires ChimeraX 1.11+; warns and skips if the module is
+        unavailable (default: False).
 
     Raises
     ------
@@ -260,7 +260,10 @@ def rdkconf(
             models.append(model)
     except Exception:
         for m in models:
-            m.delete()
+            try:
+                m.delete()
+            except Exception:
+                pass
         raise
 
     session.models.add(models)
@@ -281,17 +284,25 @@ def rdkconf(
                 "minimize keyword requires ChimeraX 1.11+; skipping AMBER optimization"
             )
         else:
+            failed = []
             for model in models:
                 try:
                     _chimerax_minimize(session, model, max_steps=1000)
-                except Exception as e:
+                except (RuntimeError, ValueError) as e:
                     session.logger.warning(
                         f"minimize failed for #{model.id_string}: {e}"
                     )
-            session.logger.info(
-                "Note: rdkconf runs minimize with default settings (maxSteps 1000). "
-                "For advanced options, use the minimize command directly."
-            )
+                    failed.append(model.id_string)
+            if failed:
+                session.logger.info(
+                    f"minimize completed with {len(failed)} failure(s); "
+                    "use the minimize command directly for more control"
+                )
+            else:
+                session.logger.info(
+                    "minimize completed (maxSteps=1000); "
+                    "use the minimize command directly for advanced options"
+                )
 
     actual_count = len(conformer_list)
     if conformers > 1 and actual_count < conformers:

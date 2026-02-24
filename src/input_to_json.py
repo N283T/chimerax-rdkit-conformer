@@ -56,7 +56,7 @@ def mol_to_json(mol: Chem.Mol, conf_id: int = -1) -> dict:
         mol: RDKit Mol object. Must have at least one conformer
             (embedded 3D coordinates). Typically with explicit Hs
             added via Chem.AddHs().
-        conf_id: Conformer ID to serialize (default: -1, meaning the first/default).
+        conf_id: Conformer ID to serialize (default: -1, meaning the last added).
 
     Returns:
         Dict with 'atoms' (list of element/x/y/z) and 'bonds' (list of begin/end/order).
@@ -111,7 +111,7 @@ def mol_to_json(mol: Chem.Mol, conf_id: int = -1) -> dict:
     return {"atoms": atoms, "bonds": bonds}
 
 
-# Duplicated in cmd.py (separate Python processes cannot share imports).
+# Duplicated in cmd.py — keep both in sync.
 _MAX_CONFORMERS = 50
 
 
@@ -132,6 +132,7 @@ def input_to_json(
         input_str: Molecular notation string.
         fmt: Input format (default: smiles).
         num_confs: Number of conformers to generate (default: 1, max: 50).
+            When num_confs > 1, RMS pruning (threshold=0.5) removes duplicate conformers.
         optimize: Run MMFF force field optimization (default: False).
 
     Returns:
@@ -150,7 +151,7 @@ def input_to_json(
     mol = Chem.AddHs(mol)
 
     params = AllChem.ETKDGv3()
-    params.randomSeed = 42
+    params.randomSeed = 42  # deterministic conformer generation
 
     if num_confs == 1:
         result = AllChem.EmbedMolecule(mol, params)

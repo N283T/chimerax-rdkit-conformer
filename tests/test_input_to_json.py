@@ -268,7 +268,8 @@ class TestMultiConformer:
 
     def test_conformers_have_different_coordinates(self, script_module):
         """Different conformers should have different 3D coordinates."""
-        result = script_module.input_to_json("c1ccccc1", "smiles", num_confs=5)
+        # n-butane is flexible enough to produce distinct conformers
+        result = script_module.input_to_json("CCCC", "smiles", num_confs=5)
         if len(result) < 2:
             pytest.skip("RMS pruning left only 1 conformer")
         coords_0 = [(a["x"], a["y"], a["z"]) for a in result[0]["atoms"]]
@@ -340,3 +341,35 @@ class TestOptimizeFlag:
         with patch("rdkit.Chem.AllChem.MMFFOptimizeMoleculeConfs") as mock_mmff:
             script_module.input_to_json("CCO", "smiles", num_confs=3, optimize=False)
             mock_mmff.assert_not_called()
+
+    def test_multi_conformer_mmff_failure_warns(self, script_module):
+        """MMFF failure on a conformer emits a warning but still returns results."""
+        with patch(
+            "rdkit.Chem.AllChem.MMFFOptimizeMoleculeConfs",
+            return_value=[(-1, 0.0), (0, 1.0)],
+        ):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result = script_module.input_to_json(
+                    "CCO", "smiles", num_confs=3, optimize=True
+                )
+                mmff_warnings = [x for x in w if "MMFF" in str(x.message)]
+                assert len(mmff_warnings) == 1
+                assert "force field setup failed" in str(mmff_warnings[0].message)
+        assert len(result) >= 1
+
+    def test_multi_conformer_mmff_non_convergence_warns(self, script_module):
+        """MMFF non-convergence on a conformer emits a warning."""
+        with patch(
+            "rdkit.Chem.AllChem.MMFFOptimizeMoleculeConfs",
+            return_value=[(0, 1.0), (1, 2.0)],
+        ):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result = script_module.input_to_json(
+                    "CCO", "smiles", num_confs=3, optimize=True
+                )
+                mmff_warnings = [x for x in w if "MMFF" in str(x.message)]
+                assert len(mmff_warnings) == 1
+                assert "did not converge" in str(mmff_warnings[0].message)
+        assert len(result) >= 1

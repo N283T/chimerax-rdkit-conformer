@@ -9,11 +9,12 @@ class _RdkconfAPI(BundleAPI):
     @staticmethod
     def register_command(bundle_info, command_info, logger):
         from . import cmd
+        from chimerax.core.commands import register
 
         if command_info.name == "rdkconf":
-            from chimerax.core.commands import register
-
             register(command_info.name, cmd.rdkconf_desc, cmd.rdkconf)
+        elif command_info.name == "rdkconf uvPath":
+            register(command_info.name, cmd.rdkconf_uv_path_desc, cmd.rdkconf_uv_path)
 
 
 bundle_api = _RdkconfAPI()

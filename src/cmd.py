@@ -6,6 +6,7 @@ directly from the JSON output.
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -15,7 +16,24 @@ from chimerax.atomic import AtomicStructure, Bond
 from chimerax.atomic.struct_edit import add_atom, add_bond
 from chimerax.core.commands import CmdDesc, StringArg, BoolArg, IntArg, run
 from chimerax.core.errors import UserError
+from chimerax.core.settings import Settings
 from numpy import array, float64
+
+
+class _RdkconfSettings(Settings):
+    AUTO_SAVE = {
+        "uv_path": "",
+    }
+
+
+_settings = None
+
+
+def _get_settings(session):
+    global _settings
+    if _settings is None:
+        _settings = _RdkconfSettings(session, "rdkconf")
+    return _settings
 
 
 def _find_script() -> Path:
@@ -23,12 +41,43 @@ def _find_script() -> Path:
     return Path(__file__).parent.joinpath("input_to_json.py")
 
 
-def _find_uv() -> str:
-    """Find the uv executable."""
+def _find_uv(session) -> str:
+    """Find the uv executable.
+
+    Resolution order:
+    1. User-configured path via ``rdkconf uvPath``
+    2. System PATH (``shutil.which``)
+    3. Well-known installation paths (for GUI-launched apps
+       where PATH is minimal)
+
+    If the user-configured path is set but does not point to an
+    existing executable, a warning is logged and resolution
+    continues with steps 2-3.
+    """
+    settings = _get_settings(session)
+    if settings.uv_path:
+        p = Path(settings.uv_path)
+        if p.is_file() and os.access(p, os.X_OK):
+            return str(p)
+        session.logger.warning(
+            f"configured uv path not found: {settings.uv_path}; trying auto-detect"
+        )
+
     uv_path = shutil.which("uv")
-    if uv_path is None:
-        raise UserError("uv not found in PATH. Install uv: https://docs.astral.sh/uv/")
-    return uv_path
+    if uv_path is not None:
+        return uv_path
+
+    # GUI launch fallback: check well-known installation paths
+    home = Path.home()
+    for candidate in [
+        home.joinpath(".local", "bin", "uv"),
+        home.joinpath(".nix-profile", "bin", "uv"),
+        home.joinpath(".cargo", "bin", "uv"),
+    ]:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+
+    raise UserError("uv not found. Install uv: https://docs.astral.sh/uv/")
 
 
 def _validate_name(name: str) -> str:
@@ -208,7 +257,7 @@ def rdkconf(
         )
 
     script_path = _find_script()
-    uv_path = _find_uv()
+    uv_path = _find_uv(session)
 
     cmd_args = [
         uv_path,
@@ -234,6 +283,8 @@ def rdkconf(
         )
     except subprocess.TimeoutExpired as e:
         raise UserError("RDKit 3D generation timed out (60s)") from e
+    except OSError as e:
+        raise UserError(f"Failed to run uv: {e}") from e
 
     if result.returncode != 0:
         raise UserError(f"RDKit error: {result.stderr.strip()}")
@@ -333,4 +384,44 @@ rdkconf_desc = CmdDesc(
         ("minimize", BoolArg),
     ],
     synopsis="Generate 3D conformer(s) from molecular notation using RDKit ETKDGv3",
+)
+
+
+def rdkconf_uv_path(session, path=None):
+    """Show or set the path to the uv executable.
+
+    When called without arguments, displays the current setting and
+    the resolved uv path.  With a path argument, validates it exists
+    (tilde expansion is supported) and saves it persistently.
+    Use an empty string to reset to auto-detect.
+    """
+    settings = _get_settings(session)
+
+    if path is None:
+        configured = settings.uv_path or "(auto-detect)"
+        try:
+            resolved = _find_uv(session)
+        except UserError:
+            resolved = "(not found)"
+        session.logger.info(f"rdkconf uvPath: {configured}")
+        session.logger.info(f"rdkconf uv resolved: {resolved}")
+        return
+
+    if path == "":
+        settings.uv_path = ""
+        session.logger.info("rdkconf uvPath cleared; using auto-detect")
+        return
+
+    p = Path(path).expanduser().resolve()
+    if not p.is_file():
+        raise UserError(f"uv not found at: {p}")
+    if not os.access(p, os.X_OK):
+        raise UserError(f"uv at {p} is not executable")
+    settings.uv_path = str(p)
+    session.logger.info(f"rdkconf uvPath saved: {p}")
+
+
+rdkconf_uv_path_desc = CmdDesc(
+    optional=[("path", StringArg)],
+    synopsis="Show or set the path to the uv executable",
 )

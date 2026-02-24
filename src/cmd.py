@@ -273,6 +273,10 @@ def rdkconf(
             model_spec = f"#{model.id_string}"
             run(session, f"hide {model_spec} & H")
 
+    summary_flags = []
+    if optimize:
+        summary_flags.append("optimized")
+
     if minimize:
         try:
             from chimerax.minimize.cmd import cmd_minimize as _chimerax_minimize
@@ -280,9 +284,8 @@ def rdkconf(
             _chimerax_minimize = None
 
         if _chimerax_minimize is None:
-            session.logger.warning(
-                "minimize keyword requires ChimeraX 1.11+; skipping AMBER optimization"
-            )
+            session.logger.warning("minimize requires ChimeraX 1.11+; skipping")
+            summary_flags.append("minimize skipped (requires 1.11+)")
         else:
             failed = []
             for model in models:
@@ -294,26 +297,29 @@ def rdkconf(
                     )
                     failed.append(model.id_string)
             if failed:
-                session.logger.info(
-                    f"minimize completed with {len(failed)} failure(s); "
-                    "use the minimize command directly for more control"
-                )
+                summary_flags.append(f"minimized with {len(failed)} failure(s)")
             else:
-                session.logger.info(
-                    "minimize completed (maxSteps=1000); "
-                    "use the minimize command directly for advanced options"
-                )
+                summary_flags.append("minimized")
+            session.logger.warning(
+                "Tip: use the minimize command directly for advanced options"
+            )
 
     actual_count = len(conformer_list)
-    if conformers > 1 and actual_count < conformers:
-        session.logger.info(
-            f"Generated {actual_count} of {conformers} requested conformers "
-            f"({fmt}) from: {input_str} (duplicates pruned by RMS threshold)"
+    if actual_count == 1:
+        count_part = "1 conformer generated"
+    elif conformers > 1 and actual_count < conformers:
+        count_part = (
+            f"{actual_count}/{conformers} conformers generated (duplicates pruned)"
         )
     else:
-        session.logger.info(
-            f"Generated {actual_count} conformer(s) ({fmt}) from: {input_str}"
-        )
+        count_part = f"{actual_count} conformers generated"
+
+    if summary_flags:
+        summary = f"rdkconf: {count_part} [{', '.join(summary_flags)}]"
+    else:
+        summary = f"rdkconf: {count_part}"
+
+    session.logger.info(summary)
 
 
 rdkconf_desc = CmdDesc(

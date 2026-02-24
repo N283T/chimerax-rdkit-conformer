@@ -229,3 +229,54 @@ class TestMolToJson:
         mol = Chem.MolFromSmiles("C")
         with pytest.raises(ValueError, match="mol_to_json requires a Mol with 3D"):
             script_module.mol_to_json(mol)
+
+
+class TestMultiConformer:
+    """Tests for multi-conformer generation via input_to_json()."""
+
+    def test_single_conformer_returns_list_of_one(self, script_module):
+        """Default num_confs=1 returns a list with one conformer dict."""
+        result = script_module.input_to_json("CCO", "smiles")
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert "atoms" in result[0]
+        assert "bonds" in result[0]
+
+    def test_multiple_conformers_returns_list(self, script_module):
+        """num_confs=3 returns a list of conformer dicts."""
+        result = script_module.input_to_json("CCO", "smiles", num_confs=3)
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert len(result) <= 3
+        for conf in result:
+            assert "atoms" in conf
+            assert "bonds" in conf
+
+    def test_all_conformers_have_same_atom_count(self, script_module):
+        """All conformers for same molecule must have identical atom count."""
+        result = script_module.input_to_json("c1ccccc1", "smiles", num_confs=5)
+        atom_counts = [len(conf["atoms"]) for conf in result]
+        assert len(set(atom_counts)) == 1  # all same
+
+    def test_all_conformers_have_same_bond_count(self, script_module):
+        """All conformers must have identical bond topology."""
+        result = script_module.input_to_json("c1ccccc1", "smiles", num_confs=5)
+        bond_counts = [len(conf["bonds"]) for conf in result]
+        assert len(set(bond_counts)) == 1  # all same
+
+    def test_conformers_have_different_coordinates(self, script_module):
+        """Different conformers should have different 3D coordinates."""
+        result = script_module.input_to_json("c1ccccc1", "smiles", num_confs=5)
+        if len(result) < 2:
+            pytest.skip("RMS pruning left only 1 conformer")
+        coords_0 = [(a["x"], a["y"], a["z"]) for a in result[0]["atoms"]]
+        coords_1 = [(a["x"], a["y"], a["z"]) for a in result[1]["atoms"]]
+        assert coords_0 != coords_1
+
+    def test_pruning_may_return_fewer_conformers(self, script_module):
+        """Requesting many conformers of a rigid molecule may yield fewer due to RMS pruning."""
+        # Methane is extremely rigid — most conformers will be pruned
+        result = script_module.input_to_json("C", "smiles", num_confs=10)
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert len(result) <= 10

@@ -4,7 +4,7 @@ build-backend = "chimerax.bundle_builder.cx_pep517"
 
 [project]
 name = "ChimeraX-RDKitConformer"
-version = "0.3.0"
+version = "0.4.0"
 description = "Generate 3D conformers from molecular notations using RDKit ETKDGv3"
 license = { text = "MIT" }
 dynamic = ["classifiers", "requires-python"]
@@ -22,4 +22,4 @@ category = "Structure Generation"
 description = "Generate 3D conformer from molecular notation using RDKit ETKDGv3"
 
 [chimerax.package-data]
-"src/" = ["input_to_sdf.py"]
+"src/" = ["input_to_json.py"]

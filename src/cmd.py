@@ -1,18 +1,26 @@
-"""Command implementation for rdkconf."""
+"""ChimeraX command implementation for rdkconf.
 
-import os
+Generates 3D conformers from molecular notations by running RDKit
+in a uv-managed subprocess and building AtomicStructure models
+directly from the JSON output.
+"""
+
+import json
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
-from chimerax.core.commands import CmdDesc, StringArg, BoolArg, SaveFileNameArg, run
+from chimerax.atomic import AtomicStructure, Bond
+from chimerax.atomic.struct_edit import add_atom, add_bond
+from chimerax.core.commands import CmdDesc, StringArg, BoolArg, run
 from chimerax.core.errors import UserError
+from numpy import array, float64
 
 
 def _find_script() -> Path:
-    """Locate the bundled input_to_sdf.py script."""
-    return Path(__file__).parent.joinpath("input_to_sdf.py")
+    """Locate the bundled input_to_json.py script."""
+    return Path(__file__).parent.joinpath("input_to_json.py")
 
 
 def _find_uv() -> str:
@@ -32,23 +40,19 @@ def _validate_name(name: str) -> str:
     return name
 
 
-def _validate_sdf_path(raw_path: str) -> Path:
-    """Validate subprocess output looks like a valid SDF path."""
-    path = Path(raw_path)
-    if not path.is_absolute() or path.suffix != ".sdf":
-        raise UserError(f"Unexpected output from RDKit script: {raw_path!r}")
-    if not path.exists():
-        raise UserError(f"SDF file not generated: {raw_path}")
-    return path
-
-
 _VALID_FORMATS = {"smiles", "inchi", "fasta", "sequence", "helm", "dna", "rna"}
 
 
 def _detect_format(input_str: str, user_format: str | None) -> str:
     """Detect or validate input format.
 
-    Auto-detects InChI (starts with 'InChI='). Defaults to SMILES.
+    When user_format is provided, validates it against _VALID_FORMATS.
+    Otherwise, auto-detects InChI (starts with 'InChI=') and defaults to SMILES.
+
+    Raises
+    ------
+    UserError
+        If user_format is not a recognized format.
     """
     if user_format is not None:
         fmt = user_format.lower()
@@ -63,7 +67,90 @@ def _detect_format(input_str: str, user_format: str | None) -> str:
     return "smiles"
 
 
-def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=True):
+def _build_model(session, mol_data, name="UNL"):
+    """Build an AtomicStructure from parsed JSON molecule data.
+
+    Parameters
+    ----------
+    session : chimerax.core.session.Session
+    mol_data : dict
+        JSON-parsed dict with 'atoms' and 'bonds' keys.
+    name : str
+        Model and residue name. The residue is placed in chain ' '
+        with sequence number 1.
+
+    Returns
+    -------
+    AtomicStructure
+
+    Raises
+    ------
+    UserError
+        If mol_data contains no atoms, is missing 'bonds' data,
+        or contains malformed atom/bond entries.
+
+    Notes
+    -----
+    Registers a custom 'order' attribute on Bond if not already registered.
+    """
+    if not mol_data.get("atoms"):
+        raise UserError("RDKit output contains no atoms")
+    if "bonds" not in mol_data:
+        raise UserError("RDKit output is missing bonds data")
+
+    try:
+        Bond.register_attr(session, "order", "rdkit_conformer", attr_type=float)
+    except ValueError as e:
+        if "already" not in str(e).lower():
+            raise UserError(f"Failed to register bond order attribute: {e}") from e
+
+    s = AtomicStructure(session, name=name)
+    try:
+        r = s.new_residue(name, " ", 1)
+
+        element_count = {}
+        atoms = []
+        for i, atom_info in enumerate(mol_data["atoms"]):
+            try:
+                elem = atom_info["element"]
+                xyz = array(
+                    [atom_info["x"], atom_info["y"], atom_info["z"]], dtype=float64
+                )
+            except (KeyError, TypeError) as e:
+                raise UserError(f"Malformed atom data at index {i}: {e}") from e
+            n = element_count.get(elem, 0) + 1
+            element_count[elem] = n
+            atom_name = f"{elem}{n}"
+            a = add_atom(atom_name, elem, r, xyz)
+            atoms.append(a)
+
+        num_atoms = len(atoms)
+        for i, bond_info in enumerate(mol_data["bonds"]):
+            try:
+                begin_idx = bond_info["begin"]
+                end_idx = bond_info["end"]
+            except KeyError as e:
+                raise UserError(f"Malformed bond data at index {i}: {e}") from e
+            if (
+                begin_idx < 0
+                or begin_idx >= num_atoms
+                or end_idx < 0
+                or end_idx >= num_atoms
+            ):
+                raise UserError(
+                    f"Invalid bond indices ({begin_idx}, {end_idx}) "
+                    f"for {num_atoms} atoms"
+                )
+            b = add_bond(atoms[begin_idx], atoms[end_idx])
+            b.order = bond_info.get("order", 1.0)
+    except Exception:
+        s.delete()
+        raise
+
+    return s
+
+
+def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True):
     """Generate 3D conformer from molecular notation using RDKit ETKDGv3.
 
     Parameters
@@ -73,12 +160,16 @@ def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=T
         Molecular notation string (SMILES by default).
     format : str, optional
         Input format. Auto-detects InChI. Default: smiles.
-    output : str, optional
-        Save SDF to this path.
     name : str
-        Residue name (default: UNL).
+        Model and residue name (default: UNL).
     hydrogen : bool
         Show hydrogens (default: True).
+
+    Raises
+    ------
+    UserError
+        If uv is not found, input format is invalid, name is invalid,
+        the RDKit subprocess fails or times out, or the output is unparseable.
     """
     fmt = _detect_format(input_str, format)
     name = _validate_name(name)
@@ -88,14 +179,13 @@ def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=T
     cmd_args = [
         uv_path,
         "run",
+        "--no-project",
         "--script",
         str(script_path),
         input_str,
         "--format",
         fmt,
     ]
-    if output:
-        cmd_args.extend(["-o", output])
 
     try:
         result = subprocess.run(
@@ -110,21 +200,20 @@ def rdkconf(session, input_str, format=None, output=None, name="UNL", hydrogen=T
     if result.returncode != 0:
         raise UserError(f"RDKit error: {result.stderr.strip()}")
 
-    sdf_path = _validate_sdf_path(result.stdout.strip())
+    if result.stderr.strip():
+        session.logger.warning(f"RDKit warning: {result.stderr.strip()}")
 
     try:
-        open_cmd = f'open "{sdf_path}" name "{name}"'
-        models = run(session, open_cmd)
+        mol_data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        raise UserError(f"Failed to parse RDKit output: {e}")
 
-        if not hydrogen and models:
-            model_spec = f"#{models[0].id_string}"
-            run(session, f"hide {model_spec} & H")
-    finally:
-        if output is None:
-            try:
-                os.unlink(sdf_path)
-            except OSError:
-                pass
+    model = _build_model(session, mol_data, name)
+    session.models.add([model])
+
+    if not hydrogen:
+        model_spec = f"#{model.id_string}"
+        run(session, f"hide {model_spec} & H")
 
     session.logger.info(f"Generated 3D conformer ({fmt}) from: {input_str}")
 
@@ -133,7 +222,6 @@ rdkconf_desc = CmdDesc(
     required=[("input_str", StringArg)],
     keyword=[
         ("format", StringArg),
-        ("output", SaveFileNameArg),
         ("name", StringArg),
         ("hydrogen", BoolArg),
     ],

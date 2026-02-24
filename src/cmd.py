@@ -151,8 +151,8 @@ def _build_model(session, mol_data, name="UNL"):
     except Exception:
         try:
             s.delete()
-        except Exception:
-            pass  # Best-effort cleanup; propagate the original error
+        except Exception as cleanup_err:
+            session.logger.info(f"cleanup: failed to delete model: {cleanup_err}")
         raise
 
     return s
@@ -274,10 +274,10 @@ def rdkconf(
             model_spec = f"#{model.id_string}"
             try:
                 run(session, f"minimize {model_spec} maxSteps 1000")
-            except Exception:
+            except Exception as e:
                 session.logger.warning(
                     f"minimize command failed for {model_spec} "
-                    "(requires ChimeraX 1.11+); skipping AMBER optimization"
+                    f"(requires ChimeraX 1.11+): {e}"
                 )
 
     actual_count = len(conformer_list)

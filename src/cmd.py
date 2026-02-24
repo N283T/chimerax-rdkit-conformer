@@ -104,7 +104,9 @@ def _build_model(session, mol_data, name="UNL"):
     try:
         Bond.register_attr(session, "order", "rdkit_conformer", attr_type=float)
     except ValueError as e:
-        if "already" not in str(e).lower():
+        if "already" in str(e).lower():
+            pass  # Expected on second+ invocation within the same session
+        else:
             raise UserError(f"Failed to register bond order attribute: {e}") from e
 
     s = AtomicStructure(session, name=name)
@@ -147,7 +149,10 @@ def _build_model(session, mol_data, name="UNL"):
             b = add_bond(atoms[begin_idx], atoms[end_idx])
             b.order = bond_info.get("order", 1.0)
     except Exception:
-        s.delete()
+        try:
+            s.delete()
+        except Exception:
+            pass  # Best-effort cleanup; propagate the original error
         raise
 
     return s
@@ -226,13 +231,18 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True, conforme
         raise UserError("RDKit output contains no conformers")
 
     models = []
-    for i, mol_data in enumerate(conformer_list):
-        if len(conformer_list) == 1:
-            model_name = name
-        else:
-            model_name = f"{name}_{i + 1}"
-        model = _build_model(session, mol_data, model_name)
-        models.append(model)
+    try:
+        for i, mol_data in enumerate(conformer_list):
+            if len(conformer_list) == 1:
+                model_name = name
+            else:
+                model_name = f"{name}_{i + 1}"
+            model = _build_model(session, mol_data, model_name)
+            models.append(model)
+    except Exception:
+        for m in models:
+            m.delete()
+        raise
 
     session.models.add(models)
 

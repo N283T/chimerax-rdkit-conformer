@@ -17,26 +17,44 @@ Two installable bundles are provided. Both register the same `rdkconf` command â
 
 ### Option A: Direct RDKit (recommended for simplicity)
 
-Install RDKit into ChimeraX's Python, then install the bundle. Run the following in ChimeraX's command line:
+Install RDKit into ChimeraX's Python, then install the bundle.
+
+**From ChimeraX command line (GUI):**
 
 ```
 pip install rdkit
+cd /path/to/chimerax-rdkit-conformer/bundle-direct
+devel install .
 ```
 
+**From terminal:**
+
 ```bash
-ChimeraX --nogui --exit --cmd 'devel install bundle-direct'
+ChimeraX --nogui --exit --cmd 'pip install rdkit'
+cd /path/to/chimerax-rdkit-conformer/bundle-direct
+ChimeraX --nogui --exit --cmd 'devel install .'
 ```
+
+> **Note:** `devel install` must be run from the bundle directory (`cd` then `devel install .`). Passing an absolute path does not work due to a ChimeraX bundle builder limitation.
 
 ### Option B: uv subprocess (zero ChimeraX pollution)
 
-Install uv into ChimeraX, then install the bundle. Run the following in ChimeraX's command line:
+Install uv into ChimeraX, then install the bundle.
+
+**From ChimeraX command line (GUI):**
 
 ```
 pip install uv
+cd /path/to/chimerax-rdkit-conformer/bundle-uv
+devel install .
 ```
 
+**From terminal:**
+
 ```bash
-ChimeraX --nogui --exit --cmd 'devel install bundle-uv'
+ChimeraX --nogui --exit --cmd 'pip install uv'
+cd /path/to/chimerax-rdkit-conformer/bundle-uv
+ChimeraX --nogui --exit --cmd 'devel install .'
 ```
 
 With this option, RDKit runs in an isolated subprocess managed by uv â€” ChimeraX's own packages are not affected.
@@ -91,11 +109,9 @@ intermediate files are written.
 ## Development
 
 ```bash
-# Build wheel
-ChimeraX --nogui --exit --cmd 'devel build bundle-direct'
-
-# Install to ChimeraX
-ChimeraX --nogui --exit --cmd 'devel install bundle-direct'
+# Build and install (must cd into the bundle directory first)
+cd bundle-direct
+ChimeraX --nogui --exit --cmd 'devel install .'
 
 # Run tests (either bundle)
 cd bundle-direct && uv run --no-project --with pytest --with rdkit pytest tests/ -v

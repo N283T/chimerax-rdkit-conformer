@@ -13,7 +13,7 @@ from pathlib import Path
 
 from chimerax.atomic import AtomicStructure, Bond
 from chimerax.atomic.struct_edit import add_atom, add_bond
-from chimerax.core.commands import CmdDesc, StringArg, BoolArg, run
+from chimerax.core.commands import CmdDesc, StringArg, BoolArg, IntArg, run
 from chimerax.core.errors import UserError
 from numpy import array, float64
 
@@ -41,6 +41,8 @@ def _validate_name(name: str) -> str:
 
 
 _VALID_FORMATS = {"smiles", "inchi", "fasta", "sequence", "helm", "dna", "rna"}
+
+_MAX_CONFORMERS = 50
 
 
 def _detect_format(input_str: str, user_format: str | None) -> str:
@@ -150,8 +152,8 @@ def _build_model(session, mol_data, name="UNL"):
     return s
 
 
-def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True):
-    """Generate 3D conformer from molecular notation using RDKit ETKDGv3.
+def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True, conformers=1):
+    """Generate 3D conformer(s) from molecular notation using RDKit ETKDGv3.
 
     Parameters
     ----------
@@ -164,15 +166,24 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True):
         Model and residue name (default: UNL).
     hydrogen : bool
         Show hydrogens (default: True).
+    conformers : int
+        Number of conformers to generate (default: 1, max: 50).
 
     Raises
     ------
     UserError
         If uv is not found, input format is invalid, name is invalid,
-        the RDKit subprocess fails or times out, or the output is unparseable.
+        conformers is out of range, the RDKit subprocess fails or times out,
+        or the output is unparseable.
     """
     fmt = _detect_format(input_str, format)
     name = _validate_name(name)
+
+    if conformers < 1 or conformers > _MAX_CONFORMERS:
+        raise UserError(
+            f"conformers must be between 1 and {_MAX_CONFORMERS}, got {conformers}"
+        )
+
     script_path = _find_script()
     uv_path = _find_uv()
 
@@ -185,6 +196,8 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True):
         input_str,
         "--format",
         fmt,
+        "--conformers",
+        str(conformers),
     ]
 
     try:
@@ -204,18 +217,39 @@ def rdkconf(session, input_str, format=None, name="UNL", hydrogen=True):
         session.logger.warning(f"RDKit warning: {result.stderr.strip()}")
 
     try:
-        mol_data = json.loads(result.stdout)
+        conformer_list = json.loads(result.stdout)
     except json.JSONDecodeError as e:
         raise UserError(f"Failed to parse RDKit output: {e}")
 
-    model = _build_model(session, mol_data, name)
-    session.models.add([model])
+    if not isinstance(conformer_list, list) or len(conformer_list) == 0:
+        raise UserError("RDKit output contains no conformers")
+
+    models = []
+    for i, mol_data in enumerate(conformer_list):
+        if len(conformer_list) == 1:
+            model_name = name
+        else:
+            model_name = f"{name}_{i + 1}"
+        model = _build_model(session, mol_data, model_name)
+        models.append(model)
+
+    session.models.add(models)
 
     if not hydrogen:
-        model_spec = f"#{model.id_string}"
-        run(session, f"hide {model_spec} & H")
+        for model in models:
+            model_spec = f"#{model.id_string}"
+            run(session, f"hide {model_spec} & H")
 
-    session.logger.info(f"Generated 3D conformer ({fmt}) from: {input_str}")
+    actual_count = len(conformer_list)
+    if conformers > 1 and actual_count < conformers:
+        session.logger.info(
+            f"Generated {actual_count} of {conformers} requested conformers "
+            f"({fmt}) from: {input_str} (duplicates pruned by RMS threshold)"
+        )
+    else:
+        session.logger.info(
+            f"Generated {actual_count} conformer(s) ({fmt}) from: {input_str}"
+        )
 
 
 rdkconf_desc = CmdDesc(
@@ -224,6 +258,7 @@ rdkconf_desc = CmdDesc(
         ("format", StringArg),
         ("name", StringArg),
         ("hydrogen", BoolArg),
+        ("conformers", IntArg),
     ],
-    synopsis="Generate 3D conformer from molecular notation using RDKit ETKDGv3",
+    synopsis="Generate 3D conformer(s) from molecular notation using RDKit ETKDGv3",
 )

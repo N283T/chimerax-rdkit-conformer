@@ -73,8 +73,13 @@ def _build_model(session, mol_data, name="UNL"):
     """
     if not mol_data.get("atoms"):
         raise UserError("RDKit output contains no atoms")
+    if "bonds" not in mol_data:
+        raise UserError("RDKit output is missing bonds data")
 
-    Bond.register_attr(session, "order", "rdkit_conformer", attr_type=float)
+    try:
+        Bond.register_attr(session, "order", "rdkit_conformer", attr_type=float)
+    except ValueError:
+        pass
 
     s = AtomicStructure(session, name=name)
     r = s.new_residue(name, " ", 1)

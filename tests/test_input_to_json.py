@@ -1,3 +1,6 @@
+import warnings
+from unittest.mock import patch
+
 import pytest
 
 
@@ -84,6 +87,33 @@ class TestInputToJson:
         assert parsed["atoms"] == result["atoms"]
         assert parsed["bonds"] == result["bonds"]
 
+    def test_embed_failure_raises_runtime_error(self, script_module):
+        """Verify RuntimeError when 3D embedding fails."""
+        with patch("rdkit.Chem.AllChem.EmbedMolecule", return_value=-1):
+            with pytest.raises(RuntimeError, match="Failed to generate 3D coordinates"):
+                script_module.input_to_json("CCO", "smiles")
+
+    def test_mmff_failure_warns_but_returns_result(self, script_module):
+        """When MMFF optimization fails, a warning is issued but valid JSON is still produced."""
+        with patch("rdkit.Chem.AllChem.MMFFOptimizeMolecule", return_value=-1):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result = script_module.input_to_json("CCO", "smiles")
+                assert len(w) == 1
+                assert "MMFF force field setup failed" in str(w[0].message)
+        assert "atoms" in result
+        assert len(result["atoms"]) > 0
+
+    def test_mmff_non_convergence_warns(self, script_module):
+        """When MMFF does not converge, a warning is issued."""
+        with patch("rdkit.Chem.AllChem.MMFFOptimizeMolecule", return_value=1):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result = script_module.input_to_json("CCO", "smiles")
+                assert len(w) == 1
+                assert "did not converge" in str(w[0].message)
+        assert "atoms" in result
+
 
 class TestMolToJson:
     """Tests for mol_to_json() — RDKit Mol to JSON-serializable dict."""
@@ -156,3 +186,46 @@ class TestMolToJson:
         # Benzene has 6 aromatic C-C bonds (1.5) + 6 C-H single bonds (1.0)
         aromatic_count = sum(1 for o in orders if o == 1.5)
         assert aromatic_count == 6
+
+    def test_double_bond_order(self, script_module):
+        """Ethylene (C=C) should have a double bond with order 2.0."""
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("C=C"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        orders = [b["order"] for b in result["bonds"]]
+        assert 2.0 in orders
+
+    def test_triple_bond_order(self, script_module):
+        """Acetylene (C#C) should have a triple bond with order 3.0."""
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("C#C"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        orders = [b["order"] for b in result["bonds"]]
+        assert 3.0 in orders
+
+    def test_bond_indices_within_atom_range(self, script_module):
+        """Bond begin/end indices must reference valid atom positions."""
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("CCO"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        num_atoms = len(result["atoms"])
+        for bond in result["bonds"]:
+            assert 0 <= bond["begin"] < num_atoms
+            assert 0 <= bond["end"] < num_atoms
+
+    def test_no_conformer_raises_value_error(self, script_module):
+        """mol_to_json raises ValueError when mol has no conformer."""
+        from rdkit import Chem
+
+        mol = Chem.MolFromSmiles("C")
+        with pytest.raises(ValueError, match="mol_to_json requires a Mol with 3D"):
+            script_module.mol_to_json(mol)

@@ -52,11 +52,22 @@ def mol_to_json(mol: Chem.Mol) -> dict:
     """Serialize an RDKit Mol with 3D coordinates to a JSON-compatible dict.
 
     Args:
-        mol: RDKit Mol object with embedded 3D coordinates and explicit Hs.
+        mol: RDKit Mol object. Must have at least one conformer
+            (embedded 3D coordinates). Typically with explicit Hs
+            added via Chem.AddHs().
 
     Returns:
         Dict with 'atoms' (list of element/x/y/z) and 'bonds' (list of begin/end/order).
+
+    Raises:
+        ValueError: If mol has no conformer.
     """
+    if mol.GetNumConformers() == 0:
+        raise ValueError(
+            "mol_to_json requires a Mol with 3D coordinates. "
+            "Call AllChem.EmbedMolecule first."
+        )
+
     conf = mol.GetConformer()
     atoms = []
     for i in range(mol.GetNumAtoms()):
@@ -78,11 +89,22 @@ def mol_to_json(mol: Chem.Mol) -> dict:
     }
     bonds = []
     for bond in mol.GetBonds():
+        bond_order = bond_type_map.get(bond.GetBondType())
+        if bond_order is None:
+            import warnings
+
+            warnings.warn(
+                f"Unknown bond type {bond.GetBondType().name} between atoms "
+                f"{bond.GetBeginAtomIdx()} and {bond.GetEndAtomIdx()}, "
+                "defaulting to 1.0",
+                stacklevel=2,
+            )
+            bond_order = 1.0
         bonds.append(
             {
                 "begin": bond.GetBeginAtomIdx(),
                 "end": bond.GetEndAtomIdx(),
-                "order": bond_type_map.get(bond.GetBondType(), 1.0),
+                "order": bond_order,
             }
         )
 
@@ -91,6 +113,10 @@ def mol_to_json(mol: Chem.Mol) -> dict:
 
 def input_to_json(input_str: str, fmt: str = "smiles") -> dict:
     """Convert molecular notation to a 3D JSON dict using ETKDGv3.
+
+    Generates 3D coordinates via ETKDGv3 embedding, then optimizes geometry
+    using MMFF force field. If MMFF optimization fails or does not converge,
+    a warning is emitted and coordinates are returned as-is.
 
     Args:
         input_str: Molecular notation string.
@@ -112,13 +138,19 @@ def input_to_json(input_str: str, fmt: str = "smiles") -> dict:
     if result == -1:
         raise RuntimeError(f"Failed to generate 3D coordinates for: {input_str}")
 
+    import warnings
+
     opt_result = AllChem.MMFFOptimizeMolecule(mol)
     if opt_result == -1:
-        import warnings
-
         warnings.warn(
             f"MMFF force field setup failed for: {input_str}. "
             "3D coordinates are unoptimized.",
+            stacklevel=2,
+        )
+    elif opt_result == 1:
+        warnings.warn(
+            f"MMFF optimization did not converge for: {input_str}. "
+            "3D coordinates may have suboptimal geometry.",
             stacklevel=2,
         )
 

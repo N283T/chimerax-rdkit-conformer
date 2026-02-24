@@ -187,9 +187,10 @@ def rdkconf(
         Run RDKit MMFF94 force-field optimization in the subprocess
         before returning coordinates (default: False).
     minimize : bool
-        Run ChimeraX ``minimize`` (AMBER ff14SB) on each model after
-        building.  Requires ChimeraX 1.11+; silently skipped if the
-        command is unavailable (default: False).
+        Run ChimeraX minimize (AMBER ff14SB + GAFF via DockPrep) on each
+        model after building.  Calls ``chimerax.minimize.cmd.cmd_minimize``
+        directly.  Requires ChimeraX 1.11+; warns and skips if the module
+        is unavailable (default: False).
 
     Raises
     ------
@@ -270,19 +271,27 @@ def rdkconf(
             run(session, f"hide {model_spec} & H")
 
     if minimize:
-        for model in models:
-            model_spec = f"#{model.id_string}"
-            try:
-                run(session, f"minimize {model_spec} maxSteps 1000")
-            except Exception as e:
-                session.logger.warning(
-                    f"minimize command failed for {model_spec} "
-                    f"(requires ChimeraX 1.11+): {e}"
-                )
-        session.logger.info(
-            "Note: rdkconf runs minimize with default settings (maxSteps 1000). "
-            "For advanced options, use the minimize command directly."
-        )
+        try:
+            from chimerax.minimize.cmd import cmd_minimize as _chimerax_minimize
+        except ImportError:
+            _chimerax_minimize = None
+
+        if _chimerax_minimize is None:
+            session.logger.warning(
+                "minimize keyword requires ChimeraX 1.11+; skipping AMBER optimization"
+            )
+        else:
+            for model in models:
+                try:
+                    _chimerax_minimize(session, model, max_steps=1000)
+                except Exception as e:
+                    session.logger.warning(
+                        f"minimize failed for #{model.id_string}: {e}"
+                    )
+            session.logger.info(
+                "Note: rdkconf runs minimize with default settings (maxSteps 1000). "
+                "For advanced options, use the minimize command directly."
+            )
 
     actual_count = len(conformer_list)
     if conformers > 1 and actual_count < conformers:

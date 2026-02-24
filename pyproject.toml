@@ -21,5 +21,9 @@ classifiers = []
 category = "Structure Generation"
 description = "Generate 3D conformer from molecular notation using RDKit ETKDGv3"
 
+[chimerax.command."rdkconf uvPath"]
+category = "Structure Generation"
+description = "Show or set the path to the uv executable"
+
 [chimerax.package-data]
 "src/" = ["input_to_json.py"]

@@ -51,36 +51,38 @@ class TestParseInput:
             script_module.parse_input("CCO", "xyz")
 
 
-class TestInputTo3d:
-    """Integration tests for input_to_3d() — full parse+embed+optimize pipeline."""
+class TestInputToJson:
+    """Integration tests for input_to_json() — full parse+embed+optimize pipeline."""
 
-    def test_smiles_generates_sdf(self, script_module, tmp_path):
-        sdf_path = script_module.input_to_3d("CCO", "smiles", tmp_path / "out.sdf")
-        assert sdf_path.exists()
-        assert sdf_path.suffix == ".sdf"
-        content = sdf_path.read_text()
-        assert "V2000" in content or "V3000" in content
+    def test_smiles_returns_json(self, script_module):
+        result = script_module.input_to_json("CCO", "smiles")
+        assert "atoms" in result
+        assert "bonds" in result
+        assert len(result["atoms"]) > 0
+        assert len(result["bonds"]) > 0
 
-    def test_inchi_generates_sdf(self, script_module, tmp_path):
+    def test_inchi_returns_json(self, script_module):
         inchi = "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3"
-        sdf_path = script_module.input_to_3d(inchi, "inchi", tmp_path / "out.sdf")
-        assert sdf_path.exists()
-        content = sdf_path.read_text()
-        assert "V2000" in content or "V3000" in content
+        result = script_module.input_to_json(inchi, "inchi")
+        assert len(result["atoms"]) > 0
 
-    def test_sequence_generates_sdf(self, script_module, tmp_path):
-        sdf_path = script_module.input_to_3d("GGG", "sequence", tmp_path / "out.sdf")
-        assert sdf_path.exists()
+    def test_sequence_returns_json(self, script_module):
+        result = script_module.input_to_json("GGG", "sequence")
+        assert len(result["atoms"]) > 0
 
-    def test_temp_file_created_when_no_output(self, script_module):
-        sdf_path = script_module.input_to_3d("CCO", "smiles")
-        assert sdf_path.exists()
-        assert sdf_path.suffix == ".sdf"
-        sdf_path.unlink()  # cleanup
-
-    def test_invalid_input_raises(self, script_module, tmp_path):
+    def test_invalid_input_raises(self, script_module):
         with pytest.raises(ValueError, match="Invalid smiles input"):
-            script_module.input_to_3d("not_valid_$$$", "smiles", tmp_path / "out.sdf")
+            script_module.input_to_json("not_valid_$$$", "smiles")
+
+    def test_json_round_trip(self, script_module):
+        """Verify JSON output is actually JSON-serializable."""
+        import json
+
+        result = script_module.input_to_json("CCO", "smiles")
+        json_str = json.dumps(result)
+        parsed = json.loads(json_str)
+        assert parsed["atoms"] == result["atoms"]
+        assert parsed["bonds"] == result["bonds"]
 
 
 class TestMolToJson:

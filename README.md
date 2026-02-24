@@ -9,11 +9,35 @@ Generate 3D conformers from molecular notations using RDKit ETKDGv3, directly in
 
 ## Installation
 
-### From source (development)
+### 1. Install the bundle
 
 ```bash
 ChimeraX --nogui --exit --cmd 'devel install .'
 ```
+
+### 2. Install uv
+
+**Option A: Install uv into ChimeraX via pip**
+
+Run the following in ChimeraX's command line:
+
+```
+pip install uv
+```
+
+This places the uv binary in ChimeraX's user directory and is automatically detected by the bundle. The RDKit subprocess runs in an isolated environment managed by uv, so ChimeraX's own packages are not affected. You may need to re-run `pip install uv` after updating ChimeraX.
+
+**Option B: Use an existing uv installation**
+
+If uv is already installed on your system (`which uv` to check), you can point the bundle to it. This is useful when ChimeraX is launched from a GUI where the system PATH may not include user-installed tools:
+
+```
+rdkconf uvPath                         # Show current setting and resolved path
+rdkconf uvPath ~/.local/bin/uv         # Set path persistently
+rdkconf uvPath ""                      # Reset to auto-detect
+```
+
+If uv is not installed yet, follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## Usage
 
@@ -47,32 +71,6 @@ rdkconf CCO conformers 10 name EtOH               # Named multi-conformers
 | RNA sequence | `rna` | No |
 | FASTA | `fasta` | No |
 | HELM | `helm` | No |
-
-### uv Setup
-
-This bundle requires [uv](https://docs.astral.sh/uv/) to manage the RDKit subprocess.
-
-**Option A: Install uv into ChimeraX via pip**
-
-Run the following in ChimeraX's command line:
-
-```
-pip install uv
-```
-
-This places the uv binary in ChimeraX's user directory and is automatically detected by the bundle. The RDKit subprocess runs in an isolated environment managed by uv, so ChimeraX's own packages are not affected. You may need to re-run `pip install uv` after updating ChimeraX.
-
-**Option B: Use an existing uv installation**
-
-If uv is already installed on your system (`which uv` to check), you can point the bundle to it. This is useful when ChimeraX is launched from a GUI where the system PATH may not include user-installed tools:
-
-```
-rdkconf uvPath                         # Show current setting and resolved path
-rdkconf uvPath ~/.local/bin/uv         # Set path persistently
-rdkconf uvPath ""                      # Reset to auto-detect
-```
-
-If uv is not installed yet, follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## How It Works
 

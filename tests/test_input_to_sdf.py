@@ -81,3 +81,76 @@ class TestInputTo3d:
     def test_invalid_input_raises(self, script_module, tmp_path):
         with pytest.raises(ValueError, match="Invalid smiles input"):
             script_module.input_to_3d("not_valid_$$$", "smiles", tmp_path / "out.sdf")
+
+
+class TestMolToJson:
+    """Tests for mol_to_json() — RDKit Mol to JSON-serializable dict."""
+
+    def test_returns_atoms_and_bonds_keys(self, script_module):
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("C"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        assert "atoms" in result
+        assert "bonds" in result
+
+    def test_atom_has_element_and_coords(self, script_module):
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("C"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        atom = result["atoms"][0]
+        assert "element" in atom
+        assert "x" in atom
+        assert "y" in atom
+        assert "z" in atom
+        assert isinstance(atom["x"], float)
+
+    def test_ethanol_atom_count(self, script_module):
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("CCO"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        # CCO = 3 heavy + 8 H = 9 atoms total (with explicit H)
+        assert len(result["atoms"]) == 9
+
+    def test_bond_has_begin_end_order(self, script_module):
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("C"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        bond = result["bonds"][0]
+        assert "begin" in bond
+        assert "end" in bond
+        assert "order" in bond
+
+    def test_ethanol_bond_orders(self, script_module):
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("CCO"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        orders = [b["order"] for b in result["bonds"]]
+        # All bonds in ethanol are single bonds
+        assert all(o == 1.0 for o in orders)
+
+    def test_benzene_has_aromatic_bonds(self, script_module):
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mol = Chem.AddHs(Chem.MolFromSmiles("c1ccccc1"))
+        AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        result = script_module.mol_to_json(mol)
+        orders = [b["order"] for b in result["bonds"]]
+        # Benzene has 6 aromatic C-C bonds (1.5) + 6 C-H single bonds (1.0)
+        aromatic_count = sum(1 for o in orders if o == 1.5)
+        assert aromatic_count == 6
